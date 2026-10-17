@@ -335,11 +335,9 @@ dialog[open] { animation: rise .3s ease; }
 .sync-panel .hint { margin: 6px 0 10px; }
 .sync-panel .sync-error { color: var(--bad); }
 .sync-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.sync-row input { flex: 1 1 180px; background: var(--surface); }
-.members { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 6px; }
-.members li { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface); padding: 8px 12px; border-radius: 10px; }
-.members small { color: var(--muted); }
-.members .del { border: 0; background: none; color: var(--muted); cursor: pointer; }
+.sync-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.sync-form input { background: var(--surface); min-width: 0; }
+@media (max-width: 600px) { .sync-form { grid-template-columns: 1fr; } .sync-row .btn { flex: 1 1 auto; justify-content: center; } }
 
 /* ---------- Toast & footer ---------- */
 .toast {

@@ -13,22 +13,21 @@
 פותחים את `index.html` בדפדפן (או מפרסמים דרך GitHub Pages).
 ההגדרות (שם, גובה, גיל, יעדים, צבע) נמצאות בכפתור ⚙.
 
-## שמירה משותפת (Firebase)
+## שמירה משותפת (דרך GitHub)
 בלי הגדרה, הנתונים נשמרים רק בדפדפן (אפשר להעביר בין מכשירים עם ⚙ ← ייצוא / ייבוא).
-כדי ששניכם תראו את אותם נתונים בזמן אמת, מחברים פרויקט Firebase חינמי (פעם אחת, כ-10 דקות):
+כדי ששניכם תראו את אותם נתונים, האתר שומר אותם כקובצי JSON במאגר GitHub **פרטי** ומסנכרן כל חצי דקה.
 
-1. נכנסים ל-https://console.firebase.google.com ← **Create a project** (אפשר לוותר על Google Analytics).
-2. **Build → Authentication → Get started** ← לשונית **Sign-in method** ← מפעילים **Google**.
-3. באותו מקום, **Settings → Authorized domains** ← **Add domain** ← `henmess.github.io`.
-4. **Build → Firestore Database → Create database** (מיקום: `eur3` או הקרוב אליכם, מצב production).
-5. בלשונית **Rules** של Firestore מדביקים את התוכן של הקובץ `firestore.rules` ← **Publish**.
-6. **Project settings (⚙) → General → Your apps** ← אייקון `</>` (Web) ← נותנים שם ← מעתיקים את האובייקט `firebaseConfig`.
-7. מדביקים אותו בקובץ `firebase-config.js` במקום `null`:
-   ```js
-   window.FIREBASE_CONFIG = { apiKey: '...', authDomain: '...', projectId: '...', storageBucket: '...', messagingSenderId: '...', appId: '...' };
-   ```
+**הגדרה חד-פעמית (רק בטלפון של מי שיש לו GitHub):**
+1. יוצרים מאגר פרטי: https://github.com/new ← שם `wellness-data` ← לבחור **Private** ← Create repository.
+2. יוצרים טוקן: https://github.com/settings/personal-access-tokens/new
+   - **Token name:** `wellness`, **Expiration:** תוקף ארוך (למשל שנה)
+   - **Repository access:** *Only select repositories* ← `wellness-data`
+   - **Permissions → Repository permissions → Contents:** *Read and write*
+   - **Generate token** ← מעתיקים את הטוקן (`github_pat_…`)
+3. באתר: ⚙ ← "שמירה משותפת" ← מדביקים את הטוקן ← **חיבור**. הנתונים מהמכשיר עולים למאגר.
 
-אחר כך באתר: ⚙ ← **התחברות עם Google** ← **יצירת יומן משותף** (הנתונים מהמכשיר עולים לענן) ← מזינים את המייל של בן/בת הזוג ← **הזמנה**.
-בטלפון השני: ⚙ ← **התחברות עם Google** עם המייל שהוזמן – והיומן נטען אוטומטית.
+**בטלפון השני:** ⚙ ← **📲 שליחת קישור לטלפון השני** ← שולחים (למשל בוואטסאפ) ← פותחים את הקישור בטלפון השני. זהו.
 
-רק מיילים שברשימת היומן יכולים לקרוא או לשנות את הנתונים (נאכף בכללי `firestore.rules`).
+**אבטחה:** הטוקן מאפשר גישה רק למאגר `wellness-data` ונשמר רק בדפדפנים שלכם – הוא לא נמצא באתר הציבורי.
+קישור החיבור מכיל את הטוקן, אז שולחים אותו רק לבן/בת הזוג. אם הוא דלף – מוחקים את הטוקן ב-GitHub ויוצרים חדש.
+האתר מסרב להתחבר למאגר ציבורי.

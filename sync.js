@@ -1,22 +1,22 @@
-// שמירה משותפת: התחברות עם Google וסנכרון ל-Firestore בזמן אמת.
-// app.js נשאר המקור לממשק; כאן רק מעבירים את הנתונים בין המכשיר לענן.
-const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
+// שמירה משותפת דרך מאגר GitHub פרטי.
+// הנתונים נשמרים כקובצי JSON: meta.json (פרופילים) ו-days/YYYY-MM.json (ימים לפי חודש).
+// כל מכשיר מושך שינויים כל חצי דקה ודוחף את מה שהשתנה אצלו.
+const API = 'https://api.github.com';
+const CONF_KEY = 'wellness-sync';
+const POLL_MS = 30000;
 const W = window.wellness;
-const cfg = window.FIREBASE_CONFIG;
 
-let fb = null;          // { auth, db, ...functions }
-let user = null;
-let hid = null;         // מזהה היומן המשותף
-let members = [];
-let unsubs = [];
-let ready = { meta: false, days: false };
-let synced = {};        // מה שידוע שנמצא בענן, לפי מזהה מסמך
-let timer = null;
-let status = cfg ? 'loading' : 'unconfigured';
+let conf = loadConf();      // { repo: 'owner/name', token }
+let status = conf ? 'loading' : 'off';
 let errorMsg = '';
+let lastSync = null;
+let shas = {};              // נתיב קובץ → sha אחרון שידוע לנו
+let synced = {};            // 'meta' / 'p1/2026-10-17' → JSON של מה שנמצא בענן
+let busy = false;
+let again = false;
+let timer = null;
 
 const $ = (s) => document.querySelector(s);
-const email = () => ((user && user.email) || '').toLowerCase();
 const clean = (o) => JSON.parse(JSON.stringify(o));
 // JSON עם מפתחות ממוינים, כדי שההשוואה לא תלויה בסדר השדות
 function stable(v) {
@@ -26,180 +26,227 @@ function stable(v) {
   }
   return JSON.stringify(v);
 }
-const metaOf = (s) => ({ profiles: s.profiles, customFoods: s.customFoods || [] });
+const metaOf = (s) => clean({ profiles: s.profiles, customFoods: s.customFoods || [] });
 
-/* ---------------- Firebase ---------------- */
-async function init() {
-  try {
-    const [appMod, authMod, fsMod] = await Promise.all([
-      import(`${SDK}/firebase-app.js`), import(`${SDK}/firebase-auth.js`), import(`${SDK}/firebase-firestore.js`),
-    ]);
-    const app = appMod.initializeApp(cfg);
-    fb = { ...authMod, ...fsMod, auth: authMod.getAuth(app), db: fsMod.getFirestore(app) };
-    if (cfg.emulator) {
-      fb.connectAuthEmulator(fb.auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-      fb.connectFirestoreEmulator(fb.db, '127.0.0.1', 8080);
-    }
-    fb.onAuthStateChanged(fb.auth, (u) => {
-      detach();
-      user = u;
-      if (u) findHousehold();
-      else setStatus('signedout');
-    });
-  } catch (e) { fail(e); }
+function loadConf() {
+  try { return JSON.parse(localStorage.getItem(CONF_KEY)); } catch (e) { return null; }
+}
+function saveConf(c) {
+  try { c ? localStorage.setItem(CONF_KEY, JSON.stringify(c)) : localStorage.removeItem(CONF_KEY); } catch (e) { /* ignore */ }
 }
 
-async function signIn() {
-  const provider = new fb.GoogleAuthProvider();
-  try {
-    await fb.signInWithPopup(fb.auth, provider);
-  } catch (e) {
-    if (e.code === 'auth/popup-blocked') await fb.signInWithRedirect(fb.auth, provider);
-    else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') fail(e);
+/* ---------------- GitHub API ---------------- */
+async function gh(url, opts = {}) {
+  const res = await fetch(`${API}${url}`, {
+    cache: 'no-store',
+    ...opts,
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${conf.token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
+  if (res.status === 404 && !opts.body) return null;
+  if (!res.ok) { const e = new Error(`GitHub ${res.status}`); e.status = res.status; throw e; }
+  return res.json();
+}
+const contents = (path, opts) => gh(`/repos/${conf.repo}/contents${path ? '/' + path : ''}`, opts);
+
+const toB64 = (str) => {
+  let bin = '';
+  new TextEncoder().encode(str).forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+};
+const fromB64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+
+async function readFile(path) {
+  const f = await contents(path);
+  if (!f) { delete shas[path]; return null; }
+  shas[path] = f.sha;
+  return JSON.parse(fromB64(f.content));
+}
+async function writeFile(path, data) {
+  const body = { message: `Update ${path}`, content: toB64(JSON.stringify(data, null, 1)) };
+  if (shas[path]) body.sha = shas[path];
+  const r = await contents(path, { method: 'PUT', body: JSON.stringify(body) });
+  shas[path] = r.content.sha;
+}
+
+/* ---------------- Sync ---------------- */
+const dayKey = (pid, date) => `${pid}/${date}`;
+function isDirty(key, local) {
+  if (local === undefined) return false;
+  return stable(local) !== synced[key];
+}
+
+// מושכים מהענן כל קובץ שה-sha שלו השתנה; לא דורסים שינויים מקומיים שעוד לא נשמרו
+async function pull() {
+  const root = (await contents('')) || [];
+  const metaEntry = root.find((e) => e.path === 'meta.json');
+  if (metaEntry && metaEntry.sha !== shas['meta.json']) {
+    const meta = await readFile('meta.json');
+    const local = metaOf(W.getState());
+    // בפעם הראשונה הענן קובע את הפרופילים, אחר כך רק אם לא שינינו מקומית
+    if (meta && (synced.meta === undefined || !isDirty('meta', local))) {
+      synced.meta = stable(meta);
+      W.applyRemote((s) => { s.profiles = meta.profiles; s.customFoods = meta.customFoods || []; });
+    }
+  }
+  if (!root.some((e) => e.path === 'days')) return;
+  const files = (await contents('days')) || [];
+  for (const f of files) {
+    if (f.sha !== shas[f.path]) applyMonth(await readFile(f.path));
   }
 }
 
-async function findHousehold() {
-  setStatus('syncing');
-  try {
-    const q = fb.query(fb.collection(fb.db, 'households'), fb.where('members', 'array-contains', email()));
-    const snap = await fb.getDocs(q);
-    if (snap.empty) setStatus('nohousehold');
-    else attach(snap.docs[0].id);
-  } catch (e) { fail(e); }
+function applyMonth(month) {
+  if (!month) return;
+  W.applyRemote((s) => {
+    Object.entries(month).forEach(([pid, days]) => {
+      Object.entries(days).forEach(([date, day]) => {
+        const k = dayKey(pid, date);
+        const local = s.days[pid] && s.days[pid][date];
+        // שינוי מקומי שעוד לא עלה לענן גובר; הוא יידחף מיד אחרי המשיכה
+        if (isDirty(k, local) && stable(local) !== stable(day)) return;
+        (s.days[pid] || (s.days[pid] = {}))[date] = day;
+        synced[k] = stable(day);
+      });
+    });
+  });
 }
 
-async function createHousehold() {
-  setStatus('syncing');
-  try {
-    const ref = fb.doc(fb.collection(fb.db, 'households'));
-    const s = W.getState();
-    synced = { meta: stable(clean(metaOf(s))) };
-    await fb.setDoc(ref, { members: [email()], ...clean(metaOf(s)), createdAt: fb.serverTimestamp() });
-    attach(ref.id);
-    W.toast('היומן המשותף נוצר ✓');
-  } catch (e) { fail(e); }
-}
+async function pushChanges() {
+  const s = W.getState();
+  const meta = metaOf(s);
+  if (stable(meta) !== synced.meta) await withRetry('meta.json', async () => {
+    await writeFile('meta.json', meta);
+    synced.meta = stable(meta);
+  });
 
-function attach(id) {
-  hid = id;
-  ready = { meta: false, days: false };
-  const hRef = fb.doc(fb.db, 'households', id);
-
-  unsubs.push(fb.onSnapshot(hRef, (snap) => {
-    if (!snap.exists()) { detach(); setStatus('nohousehold'); return; }
-    const d = snap.data();
-    members = d.members || [];
-    if (!members.includes(email())) { detach(); setStatus('nohousehold'); return; }
-    if (!snap.metadata.hasPendingWrites && d.profiles) {
-      const meta = clean({ profiles: d.profiles, customFoods: d.customFoods || [] });
-      synced.meta = stable(meta);
-      W.applyRemote((s) => { s.profiles = meta.profiles; s.customFoods = meta.customFoods; });
-    }
-    ready.meta = true;
-    onReady();
-    renderPanel();
-  }, fail));
-
-  unsubs.push(fb.onSnapshot(fb.collection(hRef, 'days'), (snap) => {
-    const changes = snap.docChanges().filter((c) => c.type !== 'removed' && !c.doc.metadata.hasPendingWrites);
-    if (changes.length) {
-      W.applyRemote((s) => changes.forEach((c) => {
-        const { pid, date, ...dayData } = c.doc.data();
-        (s.days[pid] || (s.days[pid] = {}))[date] = dayData;
-        synced[c.doc.id] = stable(dayData);
+  const months = new Set();
+  Object.entries(s.days || {}).forEach(([pid, days]) => Object.entries(days).forEach(([date, day]) => {
+    if (isDirty(dayKey(pid, date), day)) months.add(date.slice(0, 7));
+  }));
+  for (const m of months) {
+    const path = `days/${m}.json`;
+    await withRetry(path, async () => {
+      const content = {};
+      Object.entries(W.getState().days).forEach(([pid, days]) => Object.entries(days).forEach(([date, day]) => {
+        if (date.startsWith(m)) (content[pid] || (content[pid] = {}))[date] = clean(day);
       }));
+      await writeFile(path, content);
+      Object.entries(content).forEach(([pid, days]) => Object.entries(days).forEach(([date, day]) => {
+        synced[dayKey(pid, date)] = stable(day);
+      }));
+    });
+  }
+}
+
+// אם המכשיר השני שמר באמצע – מושכים את הגרסה שלו, ממזגים ומנסים שוב
+async function withRetry(path, write) {
+  for (let i = 0; ; i++) {
+    try { return await write(); } catch (e) {
+      if (i >= 3 || (e.status !== 409 && e.status !== 422)) throw e;
+      const remote = await readFile(path);
+      if (path !== 'meta.json') applyMonth(remote);
     }
-    ready.days = true;
-    onReady();
-  }, fail));
+  }
 }
 
-function detach() {
-  unsubs.forEach((u) => u());
-  unsubs = [];
-  hid = null;
-  members = [];
-  synced = {};
-  ready = { meta: false, days: false };
-}
-
-// אחרי הטעינה הראשונה מהענן – מעלים מה שקיים רק במכשיר הזה
-function onReady() {
-  if (ready.meta && ready.days && status !== 'synced' && status !== 'saving') {
+async function sync() {
+  if (!conf) return;
+  if (busy) { again = true; return; }
+  busy = true;
+  if (status !== 'synced') setStatus('loading');
+  try {
+    await pull();
+    await pushChanges();
+    lastSync = new Date();
     setStatus('synced');
-    flush();
+  } catch (e) {
+    fail(e);
+  } finally {
+    busy = false;
+    if (again) { again = false; sync(); }
   }
 }
 
 function push() {
+  if (!conf) return;
   clearTimeout(timer);
-  timer = setTimeout(flush, 700);
+  timer = setTimeout(sync, 2000);
 }
 
-async function flush() {
-  if (!hid || !ready.meta || !ready.days) return;
-  const s = W.getState();
-  const hRef = fb.doc(fb.db, 'households', hid);
-  const ops = [];
-  const meta = clean(metaOf(s));
-  if (stable(meta) !== synced.meta) {
-    synced.meta = stable(meta);
-    ops.push((b) => b.update(hRef, meta));
-  }
-  Object.entries(s.days || {}).forEach(([pid, days]) => {
-    Object.entries(days).forEach(([date, day]) => {
-      const id = `${pid}_${date}`;
-      const data = clean(day);
-      const j = stable(data);
-      if (j === synced[id]) return;
-      synced[id] = j;
-      ops.push((b) => b.set(fb.doc(hRef, 'days', id), { ...data, pid, date }));
-    });
-  });
-  if (!ops.length) return;
-  setStatus('saving');
+async function connect(repo, token) {
+  repo = repo.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, '');
+  token = token.trim();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token) { W.toast('מלאו שם מאגר (owner/name) וטוקן'); return; }
+  conf = { repo, token };
+  shas = {}; synced = {};
+  setStatus('loading');
   try {
-    for (let i = 0; i < ops.length; i += 400) {
-      const batch = fb.writeBatch(fb.db);
-      ops.slice(i, i + 400).forEach((op) => op(batch));
-      await batch.commit();
+    const info = await gh(`/repos/${repo}`);
+    if (!info) throw Object.assign(new Error('not found'), { status: 404 });
+    if (!info.private) {
+      conf = null;
+      errorMsg = 'המאגר ציבורי! הנתונים יהיו גלויים לכולם. הפכו אותו לפרטי (Settings → Danger Zone) ונסו שוב.';
+      setStatus('error');
+      return;
     }
-    setStatus('synced');
-  } catch (e) { fail(e); }
+    if (info.permissions && !info.permissions.push) throw Object.assign(new Error('read only'), { status: 403 });
+    saveConf(conf);
+    await sync();
+    if (status === 'synced') W.toast('השמירה המשותפת פעילה ✓');
+  } catch (e) {
+    conf = null;
+    fail(e);
+  }
 }
 
-async function invite(addr) {
-  addr = addr.trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) { W.toast('כתובת המייל לא תקינה'); return; }
+function disconnect() {
+  if (!confirm('לנתק את השמירה המשותפת במכשיר הזה? הנתונים יישארו במכשיר.')) return;
+  conf = null; shas = {}; synced = {};
+  saveConf(null);
+  setStatus('off');
+}
+
+function shareLink() {
+  const link = `${location.origin}${location.pathname}#connect=${encodeURIComponent(toB64(JSON.stringify(conf)))}`;
+  const text = 'קישור לחיבור ליומן הבריאות המשותף שלנו (לפתוח בטלפון שלך פעם אחת):';
+  if (navigator.share) navigator.share({ title: 'Wellness', text, url: link }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => W.toast('הקישור הועתק – שלחו אותו לטלפון השני'));
+  else prompt('העתיקו את הקישור:', link);
+}
+
+// קישור חיבור מהטלפון השני: #connect=...
+function readConnectLink() {
+  const m = location.hash.match(/^#connect=(.+)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);
   try {
-    await fb.updateDoc(fb.doc(fb.db, 'households', hid), { members: fb.arrayUnion(addr) });
-    W.toast(`${addr} נוסף/ה ליומן ✓`);
-  } catch (e) { fail(e); }
-}
-
-async function removeMember(addr) {
-  if (!confirm(`להסיר את ${addr} מהיומן המשותף?`)) return;
-  try { await fb.updateDoc(fb.doc(fb.db, 'households', hid), { members: fb.arrayRemove(addr) }); } catch (e) { fail(e); }
+    const c = JSON.parse(fromB64(decodeURIComponent(m[1])));
+    if (c.repo && c.token) { connect(c.repo, c.token); return true; }
+  } catch (e) { W.toast('קישור החיבור לא תקין'); }
 }
 
 function fail(e) {
   console.error(e);
-  errorMsg = e && e.code === 'permission-denied' ? 'אין הרשאה – ודאו שהמייל שלכם נוסף ליומן' : (e && (e.code || e.message)) || 'שגיאה';
+  errorMsg = e.status === 401 ? 'הטוקן לא תקין או שפג תוקפו – צרו טוקן חדש.'
+    : e.status === 403 || e.status === 404 ? 'אין גישה למאגר – בדקו את שם המאגר ושלטוקן יש הרשאת Contents: Read and write.'
+    : !navigator.onLine ? 'אין חיבור לאינטרנט – השינויים יישמרו כשהחיבור יחזור.'
+    : 'שגיאת סנכרון – ננסה שוב בקרוב.';
   setStatus('error');
 }
 
 /* ---------------- UI ---------------- */
 function setStatus(s) { status = s; renderPill(); renderPanel(); }
 
-const PILL = {
-  loading: ['⏳', 'מתחבר…'], signedout: ['☁', 'לא מחובר'], nohousehold: ['☁', 'אין יומן משותף'],
-  syncing: ['⏳', 'טוען…'], saving: ['⏳', 'שומר…'], synced: ['✓', 'מסונכרן'], error: ['⚠', 'שגיאת סנכרון'],
-};
+const PILL = { loading: ['⏳', 'מסנכרן…'], synced: ['✓', 'מסונכרן'], error: ['⚠', 'שגיאת סנכרון'] };
 function renderPill() {
   const pill = $('#syncPill');
   if (!pill) return;
-  pill.classList.toggle('hidden', status === 'unconfigured');
+  pill.classList.toggle('hidden', status === 'off');
   const [icon, text] = PILL[status] || ['☁', ''];
   pill.dataset.status = status;
   pill.innerHTML = `<span>${icon}</span><span class="sync-text">${text}</span>`;
@@ -209,47 +256,45 @@ function renderPanel() {
   const el = $('#syncPanel');
   if (!el) return;
   const esc = (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-  const who = user ? `<p class="hint">מחובר/ת כ-<b dir="ltr">${esc(user.email)}</b> · <button type="button" class="link-btn" data-act="signout">התנתקות</button></p>` : '';
-  let body = '';
-  if (status === 'unconfigured') {
-    body = '<p class="hint">השמירה המשותפת עוד לא הוגדרה באתר. עד אז הנתונים נשמרים רק במכשיר הזה.</p>';
-  } else if (status === 'loading') {
-    body = '<p class="hint">מתחבר…</p>';
-  } else if (status === 'signedout') {
-    body = `<p class="hint">התחברו עם חשבון Google כדי ששניכם תראו ותעדכנו את אותם נתונים מכל טלפון.</p>
-      <button type="button" class="btn primary" data-act="signin">התחברות עם Google</button>`;
-  } else if (status === 'nohousehold') {
-    body = `${who}<p class="hint">עדיין אין יומן משותף עבור המייל הזה.<br>
-      אם בן/בת הזוג כבר יצר/ה יומן – בקשו שיוסיפו את המייל שלכם בהגדרות, ואז לחצו "בדיקה שוב".</p>
-      <div class="sync-row"><button type="button" class="btn primary" data-act="create">יצירת יומן משותף</button>
-      <button type="button" class="btn" data-act="retry">בדיקה שוב</button></div>`;
-  } else if (status === 'error') {
-    body = `${who}<p class="hint sync-error">⚠ ${esc(errorMsg)}</p>
-      <button type="button" class="btn" data-act="${user ? 'retry' : 'signin'}">נסו שוב</button>`;
-  } else {
-    body = `${who}
-      <p class="hint">✓ הנתונים של שניכם נשמרים בענן ומתעדכנים בכל המכשירים.</p>
-      <ul class="members">${members.map((m) => `<li><span dir="ltr">${esc(m)}</span>${m === email()
-        ? '<small>(את/ה)</small>' : `<button type="button" class="del" data-remove="${esc(m)}" title="הסרה">✕</button>`}</li>`).join('')}</ul>
-      <div class="sync-row">
-        <input type="email" id="inviteEmail" dir="ltr" placeholder="partner@gmail.com" aria-label="מייל להזמנה">
-        <button type="button" class="btn" data-act="invite">הזמנה</button>
+  let body;
+  if (status === 'off' || (status === 'error' && !conf)) {
+    body = `${status === 'error' ? `<p class="hint sync-error">⚠ ${esc(errorMsg)}</p>` : ''}
+      <p class="hint">כדי ששניכם תראו את אותם נתונים, חברו מאגר GitHub פרטי (ההוראות ב-README).
+      בטלפון השני אין צורך בזה – פשוט פותחים את קישור החיבור שתשלחו.</p>
+      <div class="sync-form">
+        <input id="syncRepo" dir="ltr" placeholder="henmess/wellness-data" aria-label="שם המאגר" value="henmess/wellness-data">
+        <input id="syncToken" dir="ltr" type="password" placeholder="github_pat_…" aria-label="טוקן" autocomplete="off">
+        <button type="button" class="btn primary" data-act="connect">חיבור</button>
       </div>`;
+  } else if (status === 'loading' && !lastSync) {
+    body = '<p class="hint">⏳ מתחבר ומסנכרן…</p>';
+  } else {
+    const when = lastSync ? lastSync.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '–';
+    body = `${status === 'error' ? `<p class="hint sync-error">⚠ ${esc(errorMsg)}</p>` : `<p class="hint">✓ מחובר ל-<b dir="ltr">${esc(conf.repo)}</b> · סנכרון אחרון ${when}</p>`}
+      <div class="sync-row">
+        <button type="button" class="btn primary" data-act="share">📲 שליחת קישור לטלפון השני</button>
+        <button type="button" class="btn" data-act="sync">סנכרון עכשיו</button>
+        <button type="button" class="btn" data-act="disconnect">ניתוק</button>
+      </div>
+      <p class="hint">הקישור מכיל את הגישה למאגר – שלחו אותו רק לבן/בת הזוג.</p>`;
   }
   el.innerHTML = `<h3>☁ שמירה משותפת</h3>${body}`;
   el.querySelectorAll('[data-act]').forEach((b) => {
     b.onclick = () => ({
-      signin: signIn, create: createHousehold, retry: findHousehold,
-      signout: () => fb.signOut(fb.auth),
-      invite: () => invite($('#inviteEmail').value),
+      connect: () => connect($('#syncRepo').value, $('#syncToken').value),
+      share: shareLink, sync, disconnect,
     })[b.dataset.act]();
   });
-  el.querySelectorAll('[data-remove]').forEach((b) => { b.onclick = () => removeMember(b.dataset.remove); });
-  const inp = $('#inviteEmail');
-  if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); invite(inp.value); } };
+  el.querySelectorAll('input').forEach((inp) => {
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); connect($('#syncRepo').value, $('#syncToken').value); } };
+  });
 }
 
-window.wellnessSync = { push, render: renderPanel };
+window.wellnessSync = { push };
 renderPill();
 renderPanel();
-if (cfg) init();
+if (!readConnectLink() && conf) sync();
+setInterval(() => { if (conf && document.visibilityState === 'visible') sync(); }, POLL_MS);
+document.addEventListener('visibilitychange', () => { if (conf && document.visibilityState === 'visible') sync(); });
+window.addEventListener('online', () => conf && sync());
+window.addEventListener('hashchange', readConnectLink);
