@@ -396,9 +396,10 @@ function escapeHtml(s) {
 /* ================= Product picker ================= */
 function allFoods() { return [...state.customFoods, ...FOODS]; }
 function catIcon(f) { return f.custom ? '⭐' : (FOOD_CATS.find((c) => c.id === f.cat) || {}).icon || '🍽'; }
-function unitKcal(f) { return f.custom ? f.kcalUnit : f.kcal100 * f.unitG / 100; }
+const isFixed = (f) => f.kcalUnit != null; // קלוריות קבועות למנה – בלי המרה לגרמים
+function unitKcal(f) { return isFixed(f) ? f.kcalUnit : f.kcal100 * f.unitG / 100; }
 function itemKcal(t) {
-  if (t.food.custom) return t.food.kcalUnit * t.qty;
+  if (isFixed(t.food)) return t.food.kcalUnit * t.qty;
   return t.mode === 'g' ? t.food.kcal100 * t.qty / 100 : unitKcal(t.food) * t.qty;
 }
 
@@ -450,7 +451,7 @@ function renderTray() {
   ul.innerHTML = '';
   tray.forEach((t, i) => {
     const li = document.createElement('li');
-    const units = t.food.custom
+    const units = isFixed(t.food)
       ? `<option value="unit">${escapeHtml(t.food.unit)}</option>`
       : `<option value="unit" ${t.mode === 'unit' ? 'selected' : ''}>${escapeHtml(t.food.unit)} (${t.food.unitG} גר')</option>
          <option value="g" ${t.mode === 'g' ? 'selected' : ''}>גרם</option>`;
