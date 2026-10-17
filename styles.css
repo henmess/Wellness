@@ -339,6 +339,17 @@ dialog[open] { animation: rise .3s ease; }
 .sync-form input { background: var(--surface); min-width: 0; }
 @media (max-width: 600px) { .sync-form { grid-template-columns: 1fr; } .sync-row .btn { flex: 1 1 auto; justify-content: center; } }
 
+.watch-line {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;
+  font-size: .82rem; color: var(--muted); background: var(--surface-2); padding: 6px 6px 6px 12px; border-radius: 12px;
+}
+.watch-line .chip { padding: 4px 10px; font-size: .8rem; }
+.switch-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; font-weight: 600; font-size: .9rem; cursor: pointer; }
+.switch-row input { width: 20px; height: 20px; accent-color: var(--accent); }
+.watch-grid { display: grid; grid-template-columns: 1fr 100px 1fr auto; gap: 8px; align-items: end; }
+.watch-grid input, .watch-grid select { background: var(--surface); width: 100%; }
+@media (max-width: 600px) { .watch-grid { grid-template-columns: 1fr 1fr; } .watch-grid .btn { grid-column: 1 / -1; justify-content: center; } }
+
 /* ---------- Toast & footer ---------- */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 120px); z-index: 50;

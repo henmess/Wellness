@@ -386,6 +386,7 @@ function renderAll() {
   renderBmi();
   renderCouple();
   renderCharts();
+  if (window.wellnessWatch) window.wellnessWatch.render();
 }
 
 function escapeHtml(s) {
