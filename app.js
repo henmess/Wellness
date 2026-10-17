@@ -20,7 +20,7 @@ const BMI_CATS = [
 const defaultState = () => ({
   active: 'p1',
   profiles: {
-    p1: { name: 'חן', sex: 'f', age: 32, height: 165, weight: 62, stepGoal: 8000, calGoal: 1900, color: '#ff6b8b' },
+    p1: { name: 'חן', sex: 'f', age: 32, height: 167, weight: 61, stepGoal: 8000, calGoal: 1900, color: '#ff6b8b' },
     p2: { name: 'ניר', sex: 'm', age: 34, height: 180, weight: 82, stepGoal: 10000, calGoal: 2500, color: '#2bb3a3' },
   },
   days: { p1: {}, p2: {} },
@@ -48,6 +48,9 @@ function migrateNames() {
   Object.entries(old).forEach(([id, [from, to]]) => {
     if (state.profiles[id] && state.profiles[id].name === from) state.profiles[id].name = to;
   });
+  // ברירת המחדל הישנה של חן הייתה 165 ס"מ / 62 ק"ג
+  const chen = state.profiles.p1;
+  if (chen && chen.height === 165 && chen.weight === 62) { chen.height = 167; chen.weight = 61; }
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
