@@ -493,7 +493,7 @@ function addTrayToMeal() {
 /* ================= Settings ================= */
 function openSettings() {
   $('#settingsProfiles').innerHTML = Object.entries(state.profiles).map(([id, p]) => `
-    <div class="settings-profile" data-id="${id}" style="--c:${p.color}">
+    <div class="settings-profile ${id === state.active ? 'show' : ''}" data-id="${id}" style="--c:${p.color}">
       <div class="field"><label>שם</label><input name="name" value="${escapeHtml(p.name)}" required></div>
       <div class="two">
         <div class="field"><label>מין</label><select name="sex">
@@ -511,7 +511,17 @@ function openSettings() {
       </div>
       <div class="field"><label>צבע</label><input name="color" type="color" value="${p.color}"></div>
     </div>`).join('');
+  const tabs = $('#settingsTabs');
+  tabs.innerHTML = Object.entries(state.profiles).map(([id, p]) =>
+    `<button type="button" data-id="${id}" style="--c:${p.color}" class="${id === state.active ? 'active' : ''}">${escapeHtml(p.name)}</button>`).join('');
+  tabs.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => {
+      tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      document.querySelectorAll('.settings-profile').forEach((el) => el.classList.toggle('show', el.dataset.id === b.dataset.id));
+    };
+  });
   $('#settings').showModal();
+  $('.settings-body').scrollTop = 0;
 }
 
 function saveSettings() {

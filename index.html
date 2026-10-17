@@ -211,13 +211,19 @@
   <!-- הגדרות -->
   <dialog id="settings">
     <form method="dialog" class="settings-form" id="settingsForm">
-      <h2>הגדרות פרופילים</h2>
-      <div class="settings-grid" id="settingsProfiles"></div>
-      <div class="settings-actions">
-        <button class="btn" type="button" id="exportBtn">⬇ ייצוא נתונים</button>
-        <label class="btn">⬆ ייבוא נתונים<input type="file" id="importFile" accept="application/json" hidden></label>
+      <div class="settings-head">
+        <h2>הגדרות פרופילים</h2>
+        <button class="icon-btn" value="cancel" formnovalidate title="סגירה">✕</button>
       </div>
-      <p class="hint">רוצים לסנכרן בין הטלפונים? ייצאו קובץ ממכשיר אחד וייבאו אותו בשני.</p>
+      <div class="settings-tabs" id="settingsTabs"></div>
+      <div class="settings-body">
+        <div class="settings-grid" id="settingsProfiles"></div>
+        <div class="settings-actions">
+          <button class="btn" type="button" id="exportBtn">⬇ ייצוא נתונים</button>
+          <label class="btn">⬆ ייבוא נתונים<input type="file" id="importFile" accept="application/json" hidden></label>
+        </div>
+        <p class="hint">רוצים לסנכרן בין הטלפונים? ייצאו קובץ ממכשיר אחד וייבאו אותו בשני.</p>
+      </div>
       <div class="settings-footer">
         <button class="btn" value="cancel" formnovalidate>ביטול</button>
         <button class="btn primary" value="save" id="saveSettings">שמירה</button>
