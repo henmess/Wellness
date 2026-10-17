@@ -78,27 +78,36 @@
         </div>
         <div class="tabs" id="mealTabs"></div>
 
-        <form class="add-food" id="addFoodForm" autocomplete="off">
-          <div class="field grow">
-            <label for="foodInput">מה אכלתי?</label>
-            <input id="foodInput" list="foodList" placeholder="התחילו להקליד: חזה עוף, פיתה, בננה…" required>
-            <datalist id="foodList"></datalist>
+        <div class="picker">
+          <input id="pickerSearch" type="search" placeholder="🔍 חיפוש מוצר: פיתה, קוטג', בננה…" aria-label="חיפוש מוצר">
+          <div class="cat-chips" id="catChips"></div>
+          <div class="product-grid" id="productGrid"></div>
+        </div>
+
+        <div class="tray hidden" id="tray">
+          <div class="tray-head">
+            <b>🧺 בחרתי לארוחה</b>
+            <button class="link-btn" type="button" id="clearTray">ניקוי</button>
           </div>
-          <div class="field qty">
-            <label for="qtyInput">כמות</label>
-            <input id="qtyInput" type="number" min="0" step="0.5" value="1" required>
-          </div>
-          <div class="field">
-            <label for="unitSelect">יחידה</label>
-            <select id="unitSelect"></select>
-          </div>
-          <div class="field custom-kcal hidden" id="customKcalField">
-            <label for="customKcal">קק"ל ליחידה</label>
-            <input id="customKcal" type="number" min="0" placeholder="למשל 350">
-          </div>
-          <button class="btn primary" type="submit">הוספה <span id="kcalPreview"></span></button>
-        </form>
-        <p class="hint" id="foodHint">לא מצאתם? הקלידו שם חופשי והזינו קלוריות ליחידה – הפריט יישמר לרשימה שלכם.</p>
+          <ul class="tray-list" id="trayList"></ul>
+          <button class="btn primary wide" type="button" id="addTray"></button>
+        </div>
+
+        <details class="custom-add">
+          <summary>➕ מוצר שלא מופיע ברשימה</summary>
+          <form class="add-food" id="customForm" autocomplete="off">
+            <div class="field grow">
+              <label for="customName">שם המוצר</label>
+              <input id="customName" placeholder="למשל: הסלט של סבתא" required>
+            </div>
+            <div class="field">
+              <label for="customKcal">קק"ל למנה</label>
+              <input id="customKcal" type="number" min="0" placeholder="350" required>
+            </div>
+            <button class="btn" type="submit">שמירה ובחירה</button>
+          </form>
+          <p class="hint">המוצר יישמר תחת "שלי" ותוכלו לבחור בו גם בפעם הבאה.</p>
+        </details>
 
         <ul class="food-list" id="foodItems"></ul>
 

@@ -20,17 +20,20 @@ const BMI_CATS = [
 const defaultState = () => ({
   active: 'p1',
   profiles: {
-    p1: { name: 'אני', sex: 'f', age: 32, height: 165, weight: 62, stepGoal: 8000, calGoal: 1900, color: '#ff6b8b' },
-    p2: { name: 'בעלי', sex: 'm', age: 34, height: 180, weight: 82, stepGoal: 10000, calGoal: 2500, color: '#2bb3a3' },
+    p1: { name: 'חן', sex: 'f', age: 32, height: 165, weight: 62, stepGoal: 8000, calGoal: 1900, color: '#ff6b8b' },
+    p2: { name: 'ניר', sex: 'm', age: 34, height: 180, weight: 82, stepGoal: 10000, calGoal: 2500, color: '#2bb3a3' },
   },
   days: { p1: {}, p2: {} },
   customFoods: [],
 });
 
 let state = load();
+migrateNames();
 let currentDate = todayKey();
 let currentMeal = guessMeal();
 let charts = {};
+let pickerCat = 'all';
+let tray = []; // { food, qty, mode: 'unit' | 'g' }
 
 function load() {
   try {
@@ -38,6 +41,13 @@ function load() {
     if (raw) return Object.assign(defaultState(), JSON.parse(raw));
   } catch (e) { /* storage unavailable */ }
   return defaultState();
+}
+// פרופילים שנשמרו בגרסה הקודמת עם שמות ברירת המחדל הישנים
+function migrateNames() {
+  const old = { p1: ['אני', 'חן'], p2: ['בעלי', 'ניר'] };
+  Object.entries(old).forEach(([id, [from, to]]) => {
+    if (state.profiles[id] && state.profiles[id].name === from) state.profiles[id].name = to;
+  });
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
@@ -202,7 +212,7 @@ function renderMeals() {
     const b = document.createElement('button');
     b.className = 'tab' + (m.id === currentMeal ? ' active' : '');
     b.innerHTML = `<span>${m.icon} ${m.label}</span><small>${fmt(s.mealTotals[m.id])} קק"ל</small>`;
-    b.onclick = () => { currentMeal = m.id; renderMeals(); };
+    b.onclick = () => { currentMeal = m.id; renderMeals(); renderTray(); };
     tabs.appendChild(b);
   });
 
@@ -362,6 +372,9 @@ function renderAll() {
   renderDate();
   renderSummary();
   renderMeals();
+  renderCatChips();
+  renderProducts();
+  renderTray();
   renderSteps();
   renderBmi();
   renderCouple();
@@ -372,41 +385,106 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-/* ================= Food form ================= */
+/* ================= Product picker ================= */
 function allFoods() { return [...state.customFoods, ...FOODS]; }
-function findFood(name) { return allFoods().find((f) => f.name === name.trim()); }
-
-function fillFoodList() {
-  $('#foodList').innerHTML = allFoods().map((f) => {
-    const info = f.custom ? `${f.kcalUnit} קק"ל ל${f.unit}` : `${f.kcal100} קק"ל ל-100 גרם`;
-    return `<option value="${escapeHtml(f.name)}">${info}</option>`;
-  }).join('');
+function catIcon(f) { return f.custom ? '⭐' : (FOOD_CATS.find((c) => c.id === f.cat) || {}).icon || '🍽'; }
+function unitKcal(f) { return f.custom ? f.kcalUnit : f.kcal100 * f.unitG / 100; }
+function itemKcal(t) {
+  if (t.food.custom) return t.food.kcalUnit * t.qty;
+  return t.mode === 'g' ? t.food.kcal100 * t.qty / 100 : unitKcal(t.food) * t.qty;
 }
 
-function updateFoodForm() {
-  const food = findFood($('#foodInput').value);
-  const unitSel = $('#unitSelect');
-  const prev = unitSel.value;
-  const name = $('#foodInput').value.trim();
-  if (food && !food.custom) {
-    unitSel.innerHTML = `<option value="unit">${food.unit} (${food.unitG} גר')</option><option value="g">גרם</option>`;
-    $('#customKcalField').classList.add('hidden');
-  } else {
-    unitSel.innerHTML = `<option value="unit">${food ? food.unit : 'מנה'}</option>`;
-    $('#customKcalField').classList.toggle('hidden', !!food || !name);
-  }
-  if ([...unitSel.options].some((o) => o.value === prev)) unitSel.value = prev;
-  const kcal = calcFoodKcal();
-  $('#kcalPreview').textContent = kcal != null && kcal > 0 ? `· ${fmt(kcal)} קק"ל` : '';
+function renderCatChips() {
+  const cats = [{ id: 'all', label: 'הכול', icon: '✨' }];
+  if (state.customFoods.length) cats.push({ id: 'mine', label: 'שלי', icon: '⭐' });
+  cats.push(...FOOD_CATS);
+  if (!cats.some((c) => c.id === pickerCat)) pickerCat = 'all';
+  $('#catChips').innerHTML = cats.map((c) =>
+    `<button type="button" class="chip ${c.id === pickerCat ? 'active' : ''}" data-cat="${c.id}">${c.icon} ${c.label}</button>`).join('');
+  document.querySelectorAll('#catChips .chip').forEach((b) => {
+    b.onclick = () => { pickerCat = b.dataset.cat; renderCatChips(); renderProducts(); };
+  });
 }
 
-function calcFoodKcal() {
-  const food = findFood($('#foodInput').value);
-  const qty = parseFloat($('#qtyInput').value) || 0;
-  if (food && food.custom) return food.kcalUnit * qty;
-  if (food) return $('#unitSelect').value === 'g' ? food.kcal100 * qty / 100 : food.kcal100 * food.unitG * qty / 100;
-  const k = parseFloat($('#customKcal').value);
-  return isNaN(k) ? null : k * qty;
+function renderProducts() {
+  const q = $('#pickerSearch').value.trim();
+  const list = allFoods().filter((f) => {
+    if (q) return f.name.includes(q);
+    if (pickerCat === 'all') return true;
+    if (pickerCat === 'mine') return f.custom;
+    return f.cat === pickerCat;
+  });
+  const grid = $('#productGrid');
+  grid.innerHTML = list.length ? '' : '<div class="none">לא נמצא מוצר. אפשר להוסיף אותו למטה ⬇</div>';
+  list.forEach((f) => {
+    const inTray = tray.find((t) => t.food === f);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'product' + (inTray ? ' selected' : '');
+    b.innerHTML = `<span class="p-icon">${catIcon(f)}</span><span class="p-name">${escapeHtml(f.name)}</span>
+      <span class="p-kcal">${fmt(unitKcal(f))} קק"ל · ${escapeHtml(f.unit)}</span>
+      ${inTray ? `<span class="p-count">${inTray.mode === 'g' ? inTray.qty + 'g' : inTray.qty}</span>` : ''}`;
+    b.onclick = () => pickFood(f);
+    grid.appendChild(b);
+  });
+}
+
+function pickFood(f) {
+  const t = tray.find((x) => x.food === f);
+  if (t) t.qty += t.mode === 'g' ? f.unitG : 1;
+  else tray.push({ food: f, qty: 1, mode: 'unit' });
+  renderTray(); renderProducts();
+}
+
+function renderTray() {
+  $('#tray').classList.toggle('hidden', !tray.length);
+  const ul = $('#trayList');
+  ul.innerHTML = '';
+  tray.forEach((t, i) => {
+    const li = document.createElement('li');
+    const units = t.food.custom
+      ? `<option value="unit">${escapeHtml(t.food.unit)}</option>`
+      : `<option value="unit" ${t.mode === 'unit' ? 'selected' : ''}>${escapeHtml(t.food.unit)} (${t.food.unitG} גר')</option>
+         <option value="g" ${t.mode === 'g' ? 'selected' : ''}>גרם</option>`;
+    li.innerHTML = `<span class="t-name">${catIcon(t.food)} ${escapeHtml(t.food.name)}</span>
+      <span class="stepper"><button type="button" data-d="-1">−</button>
+        <input type="number" min="0" step="${t.mode === 'g' ? 10 : 0.5}" value="${t.qty}" aria-label="כמות">
+        <button type="button" data-d="1">+</button></span>
+      <select aria-label="יחידה">${units}</select>
+      <span class="t-kcal">${fmt(itemKcal(t))} קק"ל</span>
+      <button type="button" class="del" title="הסרה">✕</button>`;
+    const step = () => (t.mode === 'g' ? 10 : 0.5);
+    li.querySelectorAll('.stepper button').forEach((b) => {
+      b.onclick = () => { t.qty = Math.max(0, +(t.qty + step() * b.dataset.d).toFixed(1)); afterTrayChange(); };
+    });
+    li.querySelector('input').onchange = (e) => { t.qty = Math.max(0, parseFloat(e.target.value) || 0); afterTrayChange(); };
+    li.querySelector('select').onchange = (e) => {
+      const mode = e.target.value;
+      if (mode === t.mode) return;
+      t.qty = mode === 'g' ? Math.round(t.qty * t.food.unitG) : +(t.qty / t.food.unitG).toFixed(1);
+      t.mode = mode;
+      afterTrayChange();
+    };
+    li.querySelector('.del').onclick = () => { tray.splice(i, 1); afterTrayChange(); };
+    ul.appendChild(li);
+  });
+  const total = tray.reduce((s, t) => s + itemKcal(t), 0);
+  const meal = MEALS.find((m) => m.id === currentMeal);
+  $('#addTray').textContent = `הוספה לארוחת ${meal.label} · ${fmt(total)} קק"ל`;
+}
+function afterTrayChange() { renderTray(); renderProducts(); }
+
+function addTrayToMeal() {
+  const items = tray.filter((t) => t.qty > 0);
+  if (!items.length) return;
+  const d = day(state.active, currentDate, true);
+  items.forEach((t) => d.meals[currentMeal].push({
+    name: t.food.name, qty: t.qty, unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t)),
+  }));
+  const total = items.reduce((s, t) => s + itemKcal(t), 0);
+  tray = [];
+  save(); renderAll();
+  toast(`נוספו ${items.length} מוצרים · ${fmt(total)} קק"ל`);
 }
 
 /* ================= Settings ================= */
@@ -458,33 +536,22 @@ function bind() {
     if (e.target.value) { currentDate = e.target.value > todayKey() ? todayKey() : e.target.value; renderAll(); }
   };
 
-  ['input', 'change'].forEach((ev) => {
-    $('#foodInput').addEventListener(ev, updateFoodForm);
-    $('#qtyInput').addEventListener(ev, updateFoodForm);
-    $('#unitSelect').addEventListener(ev, updateFoodForm);
-    $('#customKcal').addEventListener(ev, updateFoodForm);
-  });
-
-  $('#addFoodForm').onsubmit = (e) => {
+  $('#pickerSearch').addEventListener('input', renderProducts);
+  $('#clearTray').onclick = () => { tray = []; afterTrayChange(); };
+  $('#addTray').onclick = addTrayToMeal;
+  $('#customForm').onsubmit = (e) => {
     e.preventDefault();
-    const name = $('#foodInput').value.trim();
-    const qty = parseFloat($('#qtyInput').value);
-    if (!name || !(qty > 0)) return;
-    let food = findFood(name);
-    const kcal = calcFoodKcal();
-    if (kcal == null) { $('#customKcal').focus(); toast('הזינו כמה קלוריות יש ביחידה'); return; }
-    if (!food) {
-      food = { name, custom: true, unit: 'מנה', kcalUnit: parseFloat($('#customKcal').value) };
-      state.customFoods.unshift(food);
-      fillFoodList();
-    }
-    const unit = $('#unitSelect').value === 'g' ? 'גרם' : food.unit;
-    day(state.active, currentDate, true).meals[currentMeal].push({ name, qty, unit, kcal: Math.round(kcal) });
+    const name = $('#customName').value.trim();
+    const kcal = parseFloat($('#customKcal').value);
+    if (!name || !(kcal >= 0)) return;
+    let food = state.customFoods.find((f) => f.name === name);
+    if (food) food.kcalUnit = kcal;
+    else { food = { name, custom: true, unit: 'מנה', kcalUnit: kcal }; state.customFoods.unshift(food); }
     save();
-    $('#foodInput').value = ''; $('#qtyInput').value = 1; $('#customKcal').value = '';
-    updateFoodForm(); renderAll();
-    toast(`נוסף: ${name} · ${fmt(kcal)} קק"ל`);
-    $('#foodInput').focus();
+    $('#customName').value = ''; $('#customKcal').value = '';
+    renderCatChips();
+    pickFood(food);
+    toast(`"${name}" נשמר ונבחר`);
   };
 
   const setSteps = (val) => {
@@ -536,7 +603,7 @@ function bind() {
       const data = JSON.parse(await file.text());
       if (!data.profiles || !data.days) throw new Error('bad file');
       state = Object.assign(defaultState(), data);
-      save(); fillFoodList(); renderAll();
+      tray = []; save(); renderAll();
       $('#settings').close();
       toast('הנתונים יובאו בהצלחה ✓');
     } catch (err) {
@@ -548,7 +615,5 @@ function bind() {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderCharts);
 }
 
-fillFoodList();
 bind();
-updateFoodForm();
 renderAll();
