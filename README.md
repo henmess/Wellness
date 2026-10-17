@@ -13,4 +13,22 @@
 פותחים את `index.html` בדפדפן (או מפרסמים דרך GitHub Pages).
 ההגדרות (שם, גובה, גיל, יעדים, צבע) נמצאות בכפתור ⚙.
 
-הנתונים נשמרים ב-localStorage של הדפדפן. כדי להעביר בין מכשירים: ⚙ ← ייצוא / ייבוא.
+## שמירה משותפת (Firebase)
+בלי הגדרה, הנתונים נשמרים רק בדפדפן (אפשר להעביר בין מכשירים עם ⚙ ← ייצוא / ייבוא).
+כדי ששניכם תראו את אותם נתונים בזמן אמת, מחברים פרויקט Firebase חינמי (פעם אחת, כ-10 דקות):
+
+1. נכנסים ל-https://console.firebase.google.com ← **Create a project** (אפשר לוותר על Google Analytics).
+2. **Build → Authentication → Get started** ← לשונית **Sign-in method** ← מפעילים **Google**.
+3. באותו מקום, **Settings → Authorized domains** ← **Add domain** ← `henmess.github.io`.
+4. **Build → Firestore Database → Create database** (מיקום: `eur3` או הקרוב אליכם, מצב production).
+5. בלשונית **Rules** של Firestore מדביקים את התוכן של הקובץ `firestore.rules` ← **Publish**.
+6. **Project settings (⚙) → General → Your apps** ← אייקון `</>` (Web) ← נותנים שם ← מעתיקים את האובייקט `firebaseConfig`.
+7. מדביקים אותו בקובץ `firebase-config.js` במקום `null`:
+   ```js
+   window.FIREBASE_CONFIG = { apiKey: '...', authDomain: '...', projectId: '...', storageBucket: '...', messagingSenderId: '...', appId: '...' };
+   ```
+
+אחר כך באתר: ⚙ ← **התחברות עם Google** ← **יצירת יומן משותף** (הנתונים מהמכשיר עולים לענן) ← מזינים את המייל של בן/בת הזוג ← **הזמנה**.
+בטלפון השני: ⚙ ← **התחברות עם Google** עם המייל שהוזמן – והיומן נטען אוטומטית.
+
+רק מיילים שברשימת היומן יכולים לקרוא או לשנות את הנתונים (נאכף בכללי `firestore.rules`).

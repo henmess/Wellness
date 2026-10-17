@@ -19,6 +19,7 @@
       </div>
     </div>
     <nav class="profiles" id="profileTabs" aria-label="בחירת פרופיל"></nav>
+    <button class="sync-pill hidden" id="syncPill" title="שמירה משותפת"></button>
     <button class="icon-btn" id="openSettings" title="הגדרות">⚙</button>
   </header>
 
@@ -218,6 +219,7 @@
       <div class="settings-tabs" id="settingsTabs"></div>
       <div class="settings-body">
         <div class="settings-grid" id="settingsProfiles"></div>
+        <section class="sync-panel" id="syncPanel"></section>
         <div class="settings-actions">
           <button class="btn" type="button" id="exportBtn">⬇ ייצוא נתונים</button>
           <label class="btn">⬆ ייבוא נתונים<input type="file" id="importFile" accept="application/json" hidden></label>
@@ -235,6 +237,8 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <script src="foods.js"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
+  <script type="module" src="sync.js"></script>
 </body>
 </html>

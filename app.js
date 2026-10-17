@@ -52,8 +52,12 @@ function migrateNames() {
   const chen = state.profiles.p1;
   if (chen && chen.height === 165 && chen.weight === 62) { chen.height = 167; chen.weight = 61; }
 }
-function save() {
+function persistLocal() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+}
+function save() {
+  persistLocal();
+  if (window.wellnessSync) window.wellnessSync.push();
 }
 
 /* ================= Helpers ================= */
@@ -597,6 +601,7 @@ function bind() {
   });
 
   $('#openSettings').onclick = openSettings;
+  $('#syncPill').onclick = openSettings;
   $('#settingsForm').addEventListener('submit', (e) => {
     if (e.submitter && e.submitter.value === 'save') saveSettings();
   });
@@ -627,6 +632,17 @@ function bind() {
 
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderCharts);
 }
+
+// ממשק עבור sync.js (שמירה משותפת)
+window.wellness = {
+  getState: () => state,
+  applyRemote(mutate) {
+    mutate(state);
+    persistLocal();
+    renderAll();
+  },
+  toast,
+};
 
 bind();
 renderAll();

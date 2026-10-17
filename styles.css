@@ -319,6 +319,28 @@ dialog[open] { animation: rise .3s ease; }
 .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .settings-footer { display: flex; justify-content: flex-start; gap: 10px; margin-top: 18px; flex-direction: row-reverse; }
 
+/* ---------- Sync ---------- */
+.sync-pill {
+  display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); font-weight: 600; font-size: .85rem; white-space: nowrap;
+}
+.sync-pill[data-status=synced] { color: var(--good); }
+.sync-pill[data-status=error] { color: var(--bad); }
+.sync-pill[data-status=signedout], .sync-pill[data-status=nohousehold] { color: var(--muted); }
+.sync-panel {
+  margin-bottom: 16px; padding: 14px 16px; border-radius: 16px; background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.sync-panel h3 { margin: 0 0 4px; font-size: 1rem; }
+.sync-panel .hint { margin: 6px 0 10px; }
+.sync-panel .sync-error { color: var(--bad); }
+.sync-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.sync-row input { flex: 1 1 180px; background: var(--surface); }
+.members { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 6px; }
+.members li { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--surface); padding: 8px 12px; border-radius: 10px; }
+.members small { color: var(--muted); }
+.members .del { border: 0; background: none; color: var(--muted); cursor: pointer; }
+
 /* ---------- Toast & footer ---------- */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 120px); z-index: 50;
@@ -336,6 +358,8 @@ dialog[open] { animation: rise .3s ease; }
 @media (max-width: 600px) {
   .topbar { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
   .brand p { display: none; }
+  .sync-pill { margin-inline-start: auto; }
+  .sync-pill .sync-text { display: none; }
   .profiles { order: 3; width: 100%; justify-content: center; }
   .profile-tab { flex: 1; justify-content: center; }
   .container { padding: 16px 16px 32px; }
