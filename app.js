@@ -60,6 +60,17 @@ function migrateNames() {
   // ברירת המחדל הישנה של חן הייתה 165 ס"מ / 62 ק"ג
   const chen = state.profiles.p1;
   if (chen && chen.height === 165 && chen.weight === 62) { chen.height = 167; chen.weight = 61; }
+  // מוצרים מהרשימה הקבועה ששמם השתנה (RENAMED_FOODS ב-foods.js)
+  const ov = state.foodOverrides || {};
+  Object.entries(RENAMED_FOODS).forEach(([from, to]) => {
+    if (ov[from] && !ov[to]) ov[to] = ov[from];
+    delete ov[from];
+  });
+  Object.values(state.days || {}).forEach((days) => Object.values(days).forEach((d) => {
+    Object.values(d.meals || {}).forEach((items) => items.forEach((it) => {
+      if (RENAMED_FOODS[it.name]) it.name = RENAMED_FOODS[it.name];
+    }));
+  }));
   // הוורוד הקודם של חן הוחלף בוורוד בהיר יותר
   if (chen && chen.color === '#ff6b8b') chen.color = '#ff8fab';
 }

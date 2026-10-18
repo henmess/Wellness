@@ -37,7 +37,9 @@ Categories (`cat`): `grains`, `protein`, `dairy`, `dishes`, `produce`, `sweets`,
 
 ## Editing safely
 - **Don't rename existing built-in items** unless asked: `foodOverrides` and logged meals match
-  items by name, so a rename orphans the user's calorie edits and stops recalculation of past meals.
+  items by name. When a rename is needed (e.g. the user corrects what a dish contains), add
+  `'old name': 'new name'` to `RENAMED_FOODS` in `foods.js`; `app.js` then moves logged meals and
+  calorie edits to the new name on every device.
 - Removing an item is safe: logged meals keep their stored calories.
 - Changing a built-in value changes it for new picks only; logged meals keep their values unless
   the user edits the product in the site.
