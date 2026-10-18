@@ -35,6 +35,14 @@ let currentMeal = guessMeal();
 let charts = {};
 let pickerCat = 'all';
 let tray = []; // { food, qty, mode: 'unit' | 'g' }
+// בונים מחדש את הבוחר רק כשהתוכן השתנה, כדי שבנייה מחדש (למשל אחרי שמירת שדה)
+// לא "תבלע" לחיצה שכבר התחילה על כרטיס או כפתור
+const lastKeys = {};
+function unchanged(name, key) {
+  if (lastKeys[name] === key) return true;
+  lastKeys[name] = key;
+  return false;
+}
 
 function load() {
   try {
@@ -460,6 +468,7 @@ function renderCatChips() {
   if (state.customFoods.length) cats.push({ id: 'mine', label: 'שלי', icon: '⭐' });
   cats.push(...FOOD_CATS);
   if (!cats.some((c) => c.id === pickerCat)) pickerCat = 'all';
+  if (unchanged('chips', JSON.stringify([cats.map((c) => c.id), pickerCat]))) return;
   $('#catChips').innerHTML = cats.map((c) =>
     `<button type="button" class="chip ${c.id === pickerCat ? 'active' : ''}" data-cat="${c.id}">${c.icon} ${c.label}</button>`).join('');
   document.querySelectorAll('#catChips .chip').forEach((b) => {
@@ -476,6 +485,10 @@ function renderProducts() {
     return f.cat === pickerCat;
   });
   const grid = $('#productGrid');
+  const key = JSON.stringify([q, pickerCat,
+    list.map((f) => [f.name, unitKcal(f), f.unit, !!f.edited, !!f.custom]),
+    tray.map((t) => [t.food.name, t.qty, t.mode])]);
+  if (unchanged('products', key) && grid.childElementCount) return;
   grid.innerHTML = '';
   if (!list.length) {
     grid.innerHTML = q
@@ -595,6 +608,7 @@ function deleteEditingFood() {
 }
 
 function pickFood(f) {
+  f = allFoods().find((x) => x.name === f.name && !!x.custom === !!f.custom) || f;
   const t = tray.find((x) => x.food === f);
   if (t) t.qty += t.mode === 'g' ? f.unitG : 1;
   else tray.push({ food: f, qty: 1, mode: 'unit' });
@@ -604,6 +618,10 @@ function pickFood(f) {
 function renderTray() {
   $('#tray').classList.toggle('hidden', !tray.length);
   const ul = $('#trayList');
+  const meal = MEALS.find((m) => m.id === currentMeal);
+  const total = tray.reduce((s, t) => s + itemKcal(t), 0);
+  $('#addTray').textContent = `הוספה לארוחת ${meal.label} · ${fmt(total)} קק"ל`;
+  if (unchanged('tray', JSON.stringify(tray.map((t) => [t.food.name, t.qty, t.mode, itemKcal(t)])))) return;
   ul.innerHTML = '';
   tray.forEach((t, i) => {
     const li = document.createElement('li');
@@ -639,9 +657,6 @@ function renderTray() {
     li.querySelector('.del').onclick = () => { tray.splice(i, 1); afterTrayChange(); };
     ul.appendChild(li);
   });
-  const total = tray.reduce((s, t) => s + itemKcal(t), 0);
-  const meal = MEALS.find((m) => m.id === currentMeal);
-  $('#addTray').textContent = `הוספה לארוחת ${meal.label} · ${fmt(total)} קק"ל`;
 }
 function afterTrayChange() { renderTray(); renderProducts(); }
 

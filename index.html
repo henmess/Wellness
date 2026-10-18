@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261018i">
+  <link rel="stylesheet" href="styles.css?v=20261018l">
 </head>
 <body>
   <header class="topbar">
@@ -24,6 +24,16 @@
   </header>
 
   <main class="container">
+    <div class="sync-banner hidden" id="syncBanner" role="status">
+      <span class="sb-icon">☁</span>
+      <div class="sb-text">
+        <b>הדפדפן הזה עוד לא מחובר לשמירה המשותפת</b>
+        <span>לכן לא רואים כאן נתונים שהוזנו בטלפון או בדפדפן אחר.</span>
+      </div>
+      <button type="button" class="btn primary" id="syncBannerGo">חיבור</button>
+      <button type="button" class="sb-close" id="syncBannerClose" aria-label="סגירה">✕</button>
+    </div>
+
     <section class="datebar">
       <button class="icon-btn" id="prevDay" title="יום קודם">›</button>
       <div class="date-center">
@@ -258,9 +268,9 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261018i"></script>
-  <script src="app.js?v=20261018i"></script>
-  <script src="watch.js?v=20261018i"></script>
-  <script type="module" src="sync.js?v=20261018i"></script>
+  <script src="foods.js?v=20261018l"></script>
+  <script src="app.js?v=20261018l"></script>
+  <script src="watch.js?v=20261018l"></script>
+  <script type="module" src="sync.js?v=20261018l"></script>
 </body>
 </html>

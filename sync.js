@@ -215,8 +215,19 @@ function disconnect() {
   setStatus('off');
 }
 
+const connectLink = () => `${location.origin}${location.pathname}#connect=${encodeURIComponent(toB64(JSON.stringify(conf)))}`;
+
+function copyLink() {
+  const link = connectLink();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(link)
+      .then(() => W.toast('הקישור הועתק – הדביקו אותו בשורת הכתובת בדפדפן השני'))
+      .catch(() => prompt('העתיקו את הקישור:', link));
+  } else prompt('העתיקו את הקישור:', link);
+}
+
 function shareLink() {
-  const link = `${location.origin}${location.pathname}#connect=${encodeURIComponent(toB64(JSON.stringify(conf)))}`;
+  const link = connectLink();
   const text = 'קישור לחיבור ליומן הבריאות המשותף שלנו (לפתוח בטלפון שלך פעם אחת):';
   if (navigator.share) navigator.share({ title: 'Wellness', text, url: link }).catch(() => {});
   else if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => W.toast('הקישור הועתק – שלחו אותו לטלפון השני'));
@@ -247,7 +258,21 @@ function fail(e) {
 function setStatus(s) { status = s; renderPill(); renderPanel(); }
 
 const PILL = { loading: ['⏳', 'מסנכרן…'], synced: ['✓', 'מסונכרן'], error: ['⚠', 'שגיאת סנכרון'] };
+const BANNER_KEY = 'wellness-sync-banner-closed';
+function renderBanner() {
+  const el = $('#syncBanner');
+  if (!el) return;
+  let closed = false;
+  try { closed = localStorage.getItem(BANNER_KEY) === '1'; } catch (e) { /* ignore */ }
+  el.classList.toggle('hidden', status !== 'off' || closed);
+}
+function openSyncSettings() {
+  $('#openSettings').click();
+  setTimeout(() => $('#syncPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+}
+
 function renderPill() {
+  renderBanner();
   const pill = $('#syncPill');
   if (!pill) return;
   pill.classList.toggle('hidden', status === 'off');
@@ -263,8 +288,9 @@ function renderPanel() {
   let body;
   if (status === 'off' || (status === 'error' && !conf)) {
     body = `${status === 'error' ? `<p class="hint sync-error">⚠ ${esc(errorMsg)}</p>` : ''}
-      <p class="hint">כדי ששניכם תראו את אותם נתונים, חברו מאגר GitHub פרטי (ההוראות ב-README).
-      בטלפון השני אין צורך בזה – פשוט פותחים את קישור החיבור שתשלחו.</p>
+      <p class="hint"><b>כבר חיברתם בטלפון או בדפדפן אחר?</b> שם: ⚙ ← "שמירה משותפת" ← 📲 שליחת קישור (או 📋 העתקה),
+      ופותחים את הקישור כאן. אין צורך להזין טוקן שוב.</p>
+      <p class="hint">חיבור ראשון: מדביקים את הטוקן של מאגר GitHub הפרטי (ההוראות ב-README).</p>
       <div class="sync-form">
         <input id="syncRepo" dir="ltr" placeholder="henmess/wellness-data" aria-label="שם המאגר" value="henmess/wellness-data">
         <input id="syncToken" dir="ltr" type="password" placeholder="github_pat_…" aria-label="טוקן" autocomplete="off">
@@ -276,7 +302,8 @@ function renderPanel() {
     const when = lastSync ? lastSync.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '–';
     body = `${status === 'error' ? `<p class="hint sync-error">⚠ ${esc(errorMsg)}</p>` : `<p class="hint">✓ מחובר ל-<b dir="ltr">${esc(conf.repo)}</b> · סנכרון אחרון ${when}</p>`}
       <div class="sync-row">
-        <button type="button" class="btn primary" data-act="share">📲 שליחת קישור לטלפון השני</button>
+        <button type="button" class="btn primary" data-act="share">📲 שליחת קישור לטלפון או לדפדפן אחר</button>
+        <button type="button" class="btn" data-act="copy">📋 העתקת הקישור</button>
         <button type="button" class="btn" data-act="sync">סנכרון עכשיו</button>
         <button type="button" class="btn" data-act="disconnect">ניתוק</button>
       </div>
@@ -286,13 +313,19 @@ function renderPanel() {
   el.querySelectorAll('[data-act]').forEach((b) => {
     b.onclick = () => ({
       connect: () => connect($('#syncRepo').value, $('#syncToken').value),
-      share: shareLink, sync, disconnect,
+      share: shareLink, copy: copyLink, sync, disconnect,
     })[b.dataset.act]();
   });
   el.querySelectorAll('input').forEach((inp) => {
     inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); connect($('#syncRepo').value, $('#syncToken').value); } };
   });
 }
+
+$('#syncBannerGo').onclick = openSyncSettings;
+$('#syncBannerClose').onclick = () => {
+  try { localStorage.setItem(BANNER_KEY, '1'); } catch (e) { /* ignore */ }
+  renderBanner();
+};
 
 window.wellnessSync = { push };
 renderPill();
