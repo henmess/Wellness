@@ -437,7 +437,15 @@ function renderProducts() {
     return f.cat === pickerCat;
   });
   const grid = $('#productGrid');
-  grid.innerHTML = list.length ? '' : '<div class="none">לא נמצא מוצר. אפשר להוסיף אותו למטה ⬇</div>';
+  grid.innerHTML = '';
+  if (!list.length) {
+    grid.innerHTML = q
+      ? `<div class="none">לא נמצא "${escapeHtml(q)}"<br>
+          <button type="button" class="btn primary suggest-add">➕ הוספת "${escapeHtml(q)}" כמוצר חדש</button></div>`
+      : '<div class="none">אין מוצרים בקטגוריה הזו</div>';
+    const add = grid.querySelector('.suggest-add');
+    if (add) add.onclick = () => openCustomAdd(q);
+  }
   list.forEach((f) => {
     const inTray = tray.find((t) => t.food === f);
     const b = document.createElement('button');
@@ -453,6 +461,16 @@ function renderProducts() {
     };
     grid.appendChild(b);
   });
+}
+
+// פותח את טופס "מוצר שלא מופיע ברשימה" עם השם שחיפשו
+function openCustomAdd(name) {
+  const box = $('#customAdd');
+  box.open = true;
+  $('#customName').value = name;
+  $('#customKcal').value = '';
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  $('#customKcal').focus({ preventScroll: true });
 }
 
 /* ---------- עריכת מוצר שלי (מכפתור ✎ בכרטיס) ---------- */
@@ -628,6 +646,7 @@ function bind() {
     else { food = { name, custom: true, unit: 'מנה', kcalUnit: kcal }; state.customFoods.unshift(food); }
     save();
     $('#customName').value = ''; $('#customKcal').value = '';
+    $('#pickerSearch').value = '';
     renderCatChips();
     pickFood(food);
     toast(`"${name}" נשמר ונבחר`);

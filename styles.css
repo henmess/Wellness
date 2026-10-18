@@ -197,7 +197,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
   background: var(--accent); color: #fff; font-size: .75rem; font-weight: 700; display: grid; place-items: center;
   animation: pop .25s ease;
 }
-.product-grid .none { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 20px; }
+.product-grid .none { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 20px; line-height: 1.6; }
+.product-grid .suggest-add { margin-top: 10px; }
 @keyframes pop { from { transform: scale(.4); } to { transform: scale(1); } }
 
 .tray {
