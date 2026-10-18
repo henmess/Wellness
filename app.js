@@ -228,7 +228,7 @@ function renderMeals() {
   list.innerHTML = items.length ? '' : `<li class="empty">עדיין לא נוספו פריטים לארוחת ${MEALS.find((m) => m.id === currentMeal).label}</li>`;
   items.forEach((f, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small>${f.unit === 'גרם' ? f.qty : fmtQty(f.qty)} ${escapeHtml(f.unit)}</small></span>
+    li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small><bdi dir="ltr">${f.unit === 'גרם' ? f.qty : fmtQty(f.qty)}</bdi> ${escapeHtml(f.unit)}</small></span>
       <span class="kcal">${fmt(f.kcal)} קק"ל</span><button class="del" title="מחיקה">✕</button>`;
     li.querySelector('.del').onclick = () => {
       d.meals[currentMeal].splice(i, 1);
@@ -442,10 +442,10 @@ function renderProducts() {
     const inTray = tray.find((t) => t.food === f);
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'product' + (inTray ? ' selected' : '');
+    b.className = 'product' + (inTray ? ' selected' : '') + (f.custom ? ' mine' : '');
     b.innerHTML = `<span class="p-icon">${catIcon(f)}</span><span class="p-name">${escapeHtml(f.name)}</span>
       <span class="p-kcal">${fmt(unitKcal(f))} קק"ל · ${escapeHtml(f.unit)}</span>
-      ${inTray ? `<span class="p-count">${inTray.mode === 'g' ? inTray.qty + 'g' : fmtQty(inTray.qty)}</span>` : ''}
+      ${inTray ? `<span class="p-count" dir="ltr">${inTray.mode === 'g' ? inTray.qty + 'g' : fmtQty(inTray.qty)}</span>` : ''}
       ${f.custom ? '<span class="p-edit" title="עריכה">✎</span>' : ''}`;
     b.onclick = (e) => {
       if (e.target.closest('.p-edit')) editMyFood(state.customFoods.indexOf(f));
@@ -505,13 +505,15 @@ function renderTray() {
       ? `<option value="unit">${escapeHtml(t.food.unit)}</option>`
       : `<option value="unit" ${t.mode === 'unit' ? 'selected' : ''}>${escapeHtml(t.food.unit)} (${t.food.unitG} גר')</option>
          <option value="g" ${t.mode === 'g' ? 'selected' : ''}>גרם</option>`;
+    // ביחידות מציגים שבר (¼, ½); בגרמים אפשר להקליד מספר
+    const qty = t.mode === 'g'
+      ? `<input type="number" min="0" step="10" value="${t.qty}" aria-label="כמות בגרמים">`
+      : `<span class="qty-val" dir="ltr">${fmtQty(t.qty)}</span>`;
     li.innerHTML = `<span class="t-name">${catIcon(t.food)} ${escapeHtml(t.food.name)}</span>
-      <span class="stepper"><button type="button" data-d="-1">−</button>
-        <input type="number" min="0" step="${t.mode === 'g' ? 10 : 0.25}" value="${t.qty}" aria-label="כמות">
-        <button type="button" data-d="1">+</button></span>
-      <select aria-label="יחידה">${units}</select>
       <span class="t-kcal">${fmt(itemKcal(t))} קק"ל</span>
-      <button type="button" class="del" title="הסרה">✕</button>`;
+      <button type="button" class="del" title="הסרה">✕</button>
+      <span class="stepper"><button type="button" data-d="-1" aria-label="פחות">−</button>${qty}<button type="button" data-d="1" aria-label="יותר">+</button></span>
+      <select aria-label="יחידה">${units}</select>`;
     li.querySelectorAll('.stepper button').forEach((b) => {
       b.onclick = () => {
         const dir = Number(b.dataset.d);
@@ -519,7 +521,8 @@ function renderTray() {
         afterTrayChange();
       };
     });
-    li.querySelector('input').onchange = (e) => { t.qty = Math.max(0, parseFloat(e.target.value) || 0); afterTrayChange(); };
+    const input = li.querySelector('input');
+    if (input) input.onchange = (e) => { t.qty = Math.max(0, parseFloat(e.target.value) || 0); afterTrayChange(); };
     li.querySelector('select').onchange = (e) => {
       const mode = e.target.value;
       if (mode === t.mode) return;
