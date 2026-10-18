@@ -26,7 +26,7 @@ function stable(v) {
   }
   return JSON.stringify(v);
 }
-const metaOf = (s) => clean({ profiles: s.profiles, customFoods: s.customFoods || [] });
+const metaOf = (s) => clean({ profiles: s.profiles, customFoods: s.customFoods || [], foodOverrides: s.foodOverrides || {} });
 
 function loadConf() {
   try { return JSON.parse(localStorage.getItem(CONF_KEY)); } catch (e) { return null; }
@@ -90,7 +90,11 @@ async function pull() {
     // בפעם הראשונה הענן קובע את הפרופילים, אחר כך רק אם לא שינינו מקומית
     if (meta && (synced.meta === undefined || !isDirty('meta', local))) {
       synced.meta = stable(meta);
-      W.applyRemote((s) => { s.profiles = meta.profiles; s.customFoods = meta.customFoods || []; });
+      W.applyRemote((s) => {
+        s.profiles = meta.profiles;
+        s.customFoods = meta.customFoods || [];
+        s.foodOverrides = meta.foodOverrides || {};
+      });
     }
   }
   if (!root.some((e) => e.path === 'days')) return;

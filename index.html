@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261018c">
+  <link rel="stylesheet" href="styles.css?v=20261018e">
 </head>
 <body>
   <header class="topbar">
@@ -240,10 +240,11 @@
     <form method="dialog" class="food-edit-form" id="foodEditForm">
       <h2>✎ עריכת מוצר</h2>
       <div class="field"><label for="feName">שם המוצר</label><input id="feName" required></div>
-      <div class="field"><label for="feKcal">קק"ל למנה</label><input id="feKcal" type="number" min="0" required></div>
-      <p class="hint">שינוי כאן לא משנה ארוחות שכבר נרשמו.</p>
+      <div class="field"><label for="feKcal" id="feKcalLabel">קק"ל למנה</label><input id="feKcal" type="number" min="0" required></div>
+      <p class="hint" id="feHint"></p>
       <div class="food-edit-actions">
         <button class="btn danger" type="button" id="feDelete">🗑 מחיקה</button>
+        <button class="btn" type="button" id="feReset">↺ ערך מקורי</button>
         <span class="grow"></span>
         <button class="btn" value="cancel" formnovalidate>ביטול</button>
         <button class="btn primary" value="save">שמירה</button>
@@ -254,9 +255,9 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261018c"></script>
-  <script src="app.js?v=20261018c"></script>
-  <script src="watch.js?v=20261018c"></script>
-  <script type="module" src="sync.js?v=20261018c"></script>
+  <script src="foods.js?v=20261018e"></script>
+  <script src="app.js?v=20261018e"></script>
+  <script src="watch.js?v=20261018e"></script>
+  <script type="module" src="sync.js?v=20261018e"></script>
 </body>
 </html>
