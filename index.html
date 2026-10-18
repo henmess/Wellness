@@ -95,7 +95,7 @@
         </div>
 
         <details class="custom-add" id="customAdd">
-          <summary>➕ מוצר שלא מופיע ברשימה · ⭐ המוצרים שלי</summary>
+          <summary>➕ מוצר שלא מופיע ברשימה</summary>
           <form class="add-food" id="customForm" autocomplete="off">
             <div class="field grow">
               <label for="customName">שם המוצר</label>
@@ -107,8 +107,7 @@
             </div>
             <button class="btn" type="submit">שמירה ובחירה</button>
           </form>
-          <p class="hint">המוצר יישמר תחת "שלי" ותוכלו לבחור בו גם בפעם הבאה.</p>
-          <div class="my-foods" id="myFoods"></div>
+          <p class="hint">המוצר יישמר תחת "שלי". לעריכה או מחיקה: מחפשים אותו ולוחצים ✎ על הכרטיס.</p>
         </details>
 
         <ul class="food-list" id="foodItems"></ul>
@@ -232,6 +231,22 @@
       <div class="settings-footer">
         <button class="btn" value="cancel" formnovalidate>ביטול</button>
         <button class="btn primary" value="save" id="saveSettings">שמירה</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- עריכת מוצר שלי -->
+  <dialog id="foodEdit">
+    <form method="dialog" class="food-edit-form" id="foodEditForm">
+      <h2>✎ עריכת מוצר</h2>
+      <div class="field"><label for="feName">שם המוצר</label><input id="feName" required></div>
+      <div class="field"><label for="feKcal">קק"ל למנה</label><input id="feKcal" type="number" min="0" required></div>
+      <p class="hint">שינוי כאן לא משנה ארוחות שכבר נרשמו.</p>
+      <div class="food-edit-actions">
+        <button class="btn danger" type="button" id="feDelete">🗑 מחיקה</button>
+        <span class="grow"></span>
+        <button class="btn" value="cancel" formnovalidate>ביטול</button>
+        <button class="btn primary" value="save">שמירה</button>
       </div>
     </form>
   </dialog>
