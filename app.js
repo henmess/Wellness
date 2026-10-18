@@ -335,28 +335,47 @@ function renderCharts() {
   Chart.defaults.color = muted;
 
   const keys = Array.from({ length: 7 }, (_, i) => shiftKey(currentDate, i - 6));
-  const labels = keys.map((k) => parseKey(k).toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric' }));
-  const sums = keys.map((k) => daySummary(id, k));
+  // תוויות קצרות: "א׳ 18"
+  const labels = keys.map((k) => {
+    const d = parseKey(k);
+    return `${d.toLocaleDateString('he-IL', { weekday: 'narrow' })} ${d.getDate()}`;
+  });
+  const BURNED = '#6c7ae0'; // שונה מצבעי הפרופילים
+  const pids = Object.keys(state.profiles);
+  const sums = Object.fromEntries(pids.map((pid) => [pid, keys.map((k) => daySummary(pid, k))]));
+  // אותו קנה מידה לשני הגרפים, כדי שאפשר יהיה להשוות ביניהם
+  const all = Object.values(sums).flat();
+  const kcalMax = Math.max(500, ...all.map((s) => Math.max(s.eaten, s.hasData ? s.burned : 0))) * 1.1;
+  const stepsMax = Math.max(2000, ...all.map((s) => s.steps)) * 1.1;
 
-  const weekData = {
-    labels,
-    datasets: [
-      { type: 'bar', label: 'אכלנו', data: sums.map((s) => Math.round(s.eaten)), backgroundColor: p.color, borderRadius: 8, yAxisID: 'y' },
-      { type: 'bar', label: 'שרפנו', data: sums.map((s) => s.hasData ? Math.round(s.burned) : 0), backgroundColor: '#22b07d', borderRadius: 8, yAxisID: 'y' },
-      { type: 'line', label: 'צעדים', data: sums.map((s) => s.steps), borderColor: '#f4a62a', backgroundColor: '#f4a62a', tension: .35, pointRadius: 4, yAxisID: 'y1' },
-    ],
-  };
-  const weekOpts = {
-    responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { position: 'bottom', rtl: true, labels: { usePointStyle: true } } },
-    scales: {
-      x: { reverse: true, grid: { display: false } },
-      y: { position: 'right', grid: { color: grid }, title: { display: true, text: 'קק"ל' } },
-      y1: { position: 'left', grid: { display: false }, title: { display: true, text: 'צעדים' } },
-    },
-  };
-  if (charts.week) { charts.week.data = weekData; charts.week.options = weekOpts; charts.week.update(); }
-  else charts.week = new Chart($('#weekChart'), { data: weekData, options: weekOpts });
+  pids.forEach((pid) => {
+    const pp = state.profiles[pid];
+    const block = document.querySelector(`.week-block[data-pid="${pid}"]`);
+    if (!block) return;
+    const title = block.querySelector('.week-title');
+    title.textContent = `${pp.sex === 'm' ? '🧔' : '👩'} ${pp.name}`;
+    title.style.color = pp.color;
+    const data = {
+      labels,
+      datasets: [
+        { type: 'line', label: 'צעדים', data: sums[pid].map((s) => s.steps), borderColor: '#f4a62a', backgroundColor: '#f4a62a', tension: 0.35, pointRadius: 4, yAxisID: 'y1', order: 0 },
+        { type: 'bar', label: 'נאכל', data: sums[pid].map((s) => Math.round(s.eaten)), backgroundColor: pp.color, borderRadius: 8, yAxisID: 'y', order: 1 },
+        { type: 'bar', label: 'נשרף', data: sums[pid].map((s) => (s.hasData ? Math.round(s.burned) : 0)), backgroundColor: BURNED, borderRadius: 8, yAxisID: 'y', order: 1 },
+      ],
+    };
+    const opts = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', rtl: true, labels: { usePointStyle: true } } },
+      scales: {
+        x: { reverse: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: false, font: { size: 11 } } },
+        y: { position: 'right', min: 0, max: Math.ceil(kcalMax / 500) * 500, grid: { color: grid }, title: { display: true, text: 'קק"ל' } },
+        y1: { position: 'left', min: 0, max: Math.ceil(stepsMax / 1000) * 1000, grid: { display: false }, title: { display: true, text: 'צעדים' } },
+      },
+    };
+    const key = `week-${pid}`;
+    if (charts[key]) { charts[key].data = data; charts[key].options = opts; charts[key].update(); }
+    else charts[key] = new Chart(block.querySelector('canvas'), { data, options: opts });
+  });
 
   // גרף משקל: כל השקילות עד התאריך הנבחר (עד 30 אחרונות)
   const days = state.days[id] || {};
