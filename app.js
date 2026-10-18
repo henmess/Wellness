@@ -231,7 +231,116 @@ function renderSummary() {
   }
 }
 
+/* ================= Habits: הצעות לפי מה שחוזר כל יום ================= */
+const HABIT_KEY = 'wellness-habits';
+const HABIT_DAYS = 7;
+function habitStore() {
+  try { return JSON.parse(localStorage.getItem(HABIT_KEY)) || { day: {}, never: {} }; } catch (e) { return { day: {}, never: {} }; }
+}
+function saveHabitStore(h) {
+  // שומרים דחיות "לא היום" רק לשבועיים האחרונים
+  const cutoff = shiftKey(todayKey(), -14);
+  Object.keys(h.day).forEach((k) => { if (k.slice(0, 10) < cutoff) delete h.day[k]; });
+  try { localStorage.setItem(HABIT_KEY, JSON.stringify(h)); } catch (e) { /* ignore */ }
+}
+
+// מאכל/שתייה שהופיעו באותה ארוחה ברוב הימים האחרונים ועוד לא נרשמו היום
+function habitSuggestions(pid, date) {
+  const days = state.days[pid] || {};
+  const prev = Array.from({ length: HABIT_DAYS }, (_, i) => shiftKey(date, -1 - i))
+    .filter((k) => days[k] && Object.values(days[k].meals || {}).some((items) => items.length));
+  if (prev.length < 3) return [];
+  const counts = {};
+  prev.forEach((k) => {
+    MEALS.forEach((m) => {
+      const seen = new Set();
+      (days[k].meals[m.id] || []).forEach((it) => {
+        const key = `${m.id}|${it.name}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const c = counts[key] || (counts[key] = { meal: m.id, name: it.name, days: 0, last: null, qtys: {} });
+        c.days++;
+        const q = `${it.qty}|${it.unit}`;
+        c.qtys[q] = (c.qtys[q] || 0) + 1;
+        if (!c.last || k > c.last.date) c.last = { date: k, item: it };
+      });
+    });
+  });
+  const h = habitStore();
+  const today = (days[date] && days[date].meals) || {};
+  return Object.values(counts)
+    .filter((c) => c.days >= 3 && c.days / prev.length >= 0.6)
+    .filter((c) => !(today[c.meal] || []).some((it) => it.name === c.name))
+    .filter((c) => !h.never[`${pid}|${c.meal}|${c.name}`] && !h.day[`${date}|${pid}|${c.meal}|${c.name}`])
+    .map((c) => {
+      // הכמות הנפוצה ביותר, והקלוריות לפי הערך העדכני של המוצר
+      const [qty, unit] = Object.entries(c.qtys).sort((a, b) => b[1] - a[1])[0][0].split('|');
+      const q = Number(qty);
+      const food = allFoods().find((f) => f.name === c.name);
+      const kcal = food
+        ? Math.round(unit === 'גרם' && !isFixed(food) ? food.kcal100 * q / 100 : unitKcal(food) * q)
+        : Math.round(c.last.item.kcal / c.last.item.qty * q);
+      return { meal: c.meal, name: c.name, qty: q, unit, kcal, days: c.days, of: prev.length };
+    })
+    .sort((a, b) => MEALS.findIndex((m) => m.id === a.meal) - MEALS.findIndex((m) => m.id === b.meal) || b.days - a.days)
+    .slice(0, 5);
+}
+
+function addHabit(sg) {
+  day(state.active, currentDate, true).meals[sg.meal].push({ name: sg.name, qty: sg.qty, unit: sg.unit, kcal: sg.kcal });
+}
+
+function renderHabits() {
+  const el = $('#habits');
+  const list = habitSuggestions(state.active, currentDate);
+  if (unchanged('habits', JSON.stringify([state.active, currentDate, list]))) return;
+  el.classList.toggle('hidden', !list.length);
+  if (!list.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="habits-head"><b>💡 לפי ההרגלים שלך</b>
+      ${list.length > 1 ? '<button type="button" class="link-btn" data-all>הוספת הכול</button>' : ''}</div>
+    <ul>${list.map((sg, i) => {
+      const meal = MEALS.find((m) => m.id === sg.meal);
+      return `<li data-i="${i}">
+        <span class="h-name">${meal.icon} ${escapeHtml(sg.name)}
+          <small><bdi dir="ltr">${sg.unit === 'גרם' ? sg.qty : fmtQty(sg.qty)}</bdi> ${escapeHtml(sg.unit)} · ${meal.label} · ${sg.days} מתוך ${sg.of} ימים</small></span>
+        <span class="h-kcal">${fmt(sg.kcal)} קק"ל</span>
+        <button type="button" class="btn primary h-add">הוספה</button>
+        <button type="button" class="h-menu" title="לא להציע">✕</button>
+        <span class="h-ask">
+          <button type="button" class="chip" data-skip="day">רק לא היום</button>
+          <button type="button" class="chip" data-skip="never">לא להציע יותר</button>
+        </span>
+      </li>`;
+    }).join('')}</ul>`;
+  el.querySelectorAll('li').forEach((li) => {
+    const sg = list[Number(li.dataset.i)];
+    li.querySelector('.h-add').onclick = () => {
+      addHabit(sg);
+      save(); renderAll();
+      toast(`נוסף: ${sg.name} · ${fmt(sg.kcal)} קק"ל`);
+    };
+    li.querySelector('.h-menu').onclick = () => li.classList.toggle('asking');
+    li.querySelectorAll('[data-skip]').forEach((b) => {
+      b.onclick = () => {
+        const h = habitStore();
+        if (b.dataset.skip === 'never') h.never[`${state.active}|${sg.meal}|${sg.name}`] = 1;
+        else h.day[`${currentDate}|${state.active}|${sg.meal}|${sg.name}`] = 1;
+        saveHabitStore(h);
+        renderHabits();
+        toast(b.dataset.skip === 'never' ? `"${sg.name}" לא יוצע יותר` : `"${sg.name}" לא יוצע היום`);
+      };
+    });
+  });
+  const all = el.querySelector('[data-all]');
+  if (all) all.onclick = () => {
+    list.forEach(addHabit);
+    save(); renderAll();
+    toast(`נוספו ${list.length} פריטים · ${fmt(list.reduce((s, x) => s + x.kcal, 0))} קק"ל`);
+  };
+}
+
 function renderMeals() {
+  renderHabits();
   const d = day();
   const s = daySummary(state.active, currentDate);
   $('#mealsTotal').textContent = `${fmt(s.eaten)} קק"ל`;

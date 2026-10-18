@@ -268,6 +268,31 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .meal-bar .fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .7s ease; }
 .meal-bar .val { text-align: left; color: var(--muted); }
 
+.habits {
+  margin-bottom: 14px; padding: 12px 14px; border-radius: 16px; animation: rise .35s ease both;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.habits-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.habits ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.habits li {
+  display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px;
+  background: var(--surface); padding: 8px 10px; border-radius: 12px;
+}
+.habits .h-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.habits .h-name small { display: block; color: var(--muted); font-weight: 400; font-size: .75rem; }
+.habits .h-kcal { font-weight: 700; color: var(--accent); white-space: nowrap; font-size: .9rem; }
+.habits .h-add { padding: 6px 12px; font-size: .85rem; }
+.habits .h-menu { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 4px; }
+.habits .h-ask { display: none; grid-column: 1 / -1; gap: 6px; justify-content: flex-end; }
+.habits li.asking .h-ask { display: flex; }
+@media (max-width: 600px) {
+  .habits li { grid-template-columns: 1fr auto auto; grid-template-areas: "name kcal menu" "add add add"; }
+  .habits .h-name { grid-area: name; } .habits .h-kcal { grid-area: kcal; } .habits .h-menu { grid-area: menu; }
+  .habits .h-add { grid-area: add; justify-content: center; }
+  .habits .h-ask { grid-column: 1 / -1; justify-content: stretch; } .habits .h-ask .chip { flex: 1; }
+}
+
 /* ---------- Steps ---------- */
 .steps-input { display: flex; align-items: center; gap: 12px; justify-content: center; }
 .steps-input input { width: 160px; text-align: center; font-size: 1.8rem; font-weight: 800; padding: 8px; }
