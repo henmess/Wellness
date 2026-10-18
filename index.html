@@ -94,8 +94,8 @@
           <button class="btn primary wide" type="button" id="addTray"></button>
         </div>
 
-        <details class="custom-add">
-          <summary>➕ מוצר שלא מופיע ברשימה</summary>
+        <details class="custom-add" id="customAdd">
+          <summary>➕ מוצר שלא מופיע ברשימה · ⭐ המוצרים שלי</summary>
           <form class="add-food" id="customForm" autocomplete="off">
             <div class="field grow">
               <label for="customName">שם המוצר</label>
@@ -108,6 +108,7 @@
             <button class="btn" type="submit">שמירה ובחירה</button>
           </form>
           <p class="hint">המוצר יישמר תחת "שלי" ותוכלו לבחור בו גם בפעם הבאה.</p>
+          <div class="my-foods" id="myFoods"></div>
         </details>
 
         <ul class="food-list" id="foodItems"></ul>

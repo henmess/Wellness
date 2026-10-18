@@ -382,6 +382,7 @@ function renderAll() {
   renderCatChips();
   renderProducts();
   renderTray();
+  renderMyFoods();
   renderSteps();
   renderBmi();
   renderCouple();
@@ -432,10 +433,73 @@ function renderProducts() {
     b.className = 'product' + (inTray ? ' selected' : '');
     b.innerHTML = `<span class="p-icon">${catIcon(f)}</span><span class="p-name">${escapeHtml(f.name)}</span>
       <span class="p-kcal">${fmt(unitKcal(f))} קק"ל · ${escapeHtml(f.unit)}</span>
-      ${inTray ? `<span class="p-count">${inTray.mode === 'g' ? inTray.qty + 'g' : inTray.qty}</span>` : ''}`;
-    b.onclick = () => pickFood(f);
+      ${inTray ? `<span class="p-count">${inTray.mode === 'g' ? inTray.qty + 'g' : inTray.qty}</span>` : ''}
+      ${f.custom ? '<span class="p-edit" title="עריכה">✎</span>' : ''}`;
+    b.onclick = (e) => {
+      if (e.target.closest('.p-edit')) editMyFood(state.customFoods.indexOf(f));
+      else pickFood(f);
+    };
     grid.appendChild(b);
   });
+}
+
+/* ---------- המוצרים שלי: עריכה ומחיקה ---------- */
+function renderMyFoods(force) {
+  const el = $('#myFoods');
+  // לא בונים מחדש בזמן הקלדה (למשל כשמגיע סנכרון)
+  if (!force && el.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+  const foods = state.customFoods;
+  if (!foods.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<h4>⭐ המוצרים שלי</h4><ul>${foods.map((f, i) => `
+    <li data-i="${i}">
+      <input class="mf-name" value="${escapeHtml(f.name)}" aria-label="שם המוצר">
+      <input class="mf-kcal" type="number" min="0" value="${f.kcalUnit}" aria-label="קק&quot;ל למנה">
+      <span class="mf-unit">קק"ל</span>
+      <button type="button" class="del" title="מחיקה">🗑</button>
+    </li>`).join('')}</ul>
+    <p class="hint">שינוי כאן לא משנה ארוחות שכבר נרשמו.</p>`;
+  el.querySelectorAll('li').forEach((li) => {
+    const i = Number(li.dataset.i);
+    const nameIn = li.querySelector('.mf-name');
+    const kcalIn = li.querySelector('.mf-kcal');
+    const commit = () => {
+      const f = state.customFoods[i];
+      const name = nameIn.value.trim();
+      const kcal = parseFloat(kcalIn.value);
+      if (!name || !(kcal >= 0)) { nameIn.value = f.name; kcalIn.value = f.kcalUnit; toast('צריך שם ומספר קלוריות'); return; }
+      if (name !== f.name && allFoods().some((x) => x !== f && x.name === name)) {
+        nameIn.value = f.name; toast('כבר יש מוצר בשם הזה'); return;
+      }
+      if (name === f.name && kcal === f.kcalUnit) return;
+      f.name = name;
+      f.kcalUnit = kcal;
+      save(); renderProducts(); renderTray();
+      toast(`"${name}" עודכן ✓`);
+    };
+    [nameIn, kcalIn].forEach((inp) => {
+      inp.onchange = commit;
+      inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } };
+    });
+    li.querySelector('.del').onclick = () => {
+      const f = state.customFoods[i];
+      if (!confirm(`למחוק את "${f.name}" מהמוצרים שלי?`)) return;
+      state.customFoods.splice(i, 1);
+      tray = tray.filter((t) => t.food !== f);
+      save();
+      renderCatChips(); renderProducts(); renderTray(); renderMyFoods(true);
+      toast(`"${f.name}" נמחק`);
+    };
+  });
+}
+
+function editMyFood(i) {
+  if (i < 0) return;
+  $('#customAdd').open = true;
+  renderMyFoods(true);
+  const li = document.querySelector(`#myFoods li[data-i="${i}"]`);
+  li.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  li.classList.add('flash');
+  li.querySelector('.mf-kcal').focus({ preventScroll: true });
 }
 
 function pickFood(f) {
@@ -569,6 +633,7 @@ function bind() {
     save();
     $('#customName').value = ''; $('#customKcal').value = '';
     renderCatChips();
+    renderMyFoods(true);
     pickFood(food);
     toast(`"${name}" נשמר ונבחר`);
   };

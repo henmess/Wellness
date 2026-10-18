@@ -223,6 +223,20 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .custom-add { margin-top: 14px; }
 .custom-add summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: .9rem; }
 .custom-add .add-food { margin-top: 10px; }
+.product .p-edit {
+  position: absolute; bottom: 6px; left: 6px; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-size: .9rem; background: var(--surface); border: 1px solid var(--border);
+}
+.product .p-edit:hover { border-color: var(--accent); color: var(--accent); }
+.my-foods h4 { margin: 14px 0 8px; font-size: .95rem; }
+.my-foods ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.my-foods li { display: flex; align-items: center; gap: 6px; background: var(--surface-2); padding: 6px 8px; border-radius: 12px; transition: box-shadow .3s; }
+.my-foods li.flash { box-shadow: 0 0 0 2px var(--accent); }
+.my-foods .mf-name { flex: 1; min-width: 0; width: 0; background: var(--surface); padding: 7px 10px; }
+.my-foods .mf-kcal { width: 76px; background: var(--surface); padding: 7px 8px; }
+.my-foods .mf-unit { color: var(--muted); font-size: .8rem; }
+.my-foods .del { border: 0; background: none; cursor: pointer; font-size: 1rem; padding: 4px 6px; border-radius: 8px; }
+.my-foods .del:hover { background: color-mix(in srgb, var(--bad) 12%, transparent); }
 
 .food-list { list-style: none; padding: 0; margin: 16px 0 0; display: flex; flex-direction: column; gap: 8px; }
 .food-list li {
