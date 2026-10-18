@@ -496,6 +496,20 @@ let editing = null; // { name, custom }
 const findCustom = (name) => state.customFoods.find((x) => x.name === name);
 const findBuiltin = (name) => builtins().find((x) => x.name === name);
 
+// מעדכן ארוחות שכבר נרשמו עם המוצר (בכל הימים ולשני הפרופילים)
+function recalcLogged(oldName, food) {
+  let n = 0;
+  Object.values(state.days).forEach((days) => Object.values(days).forEach((d) => {
+    Object.values(d.meals || {}).forEach((items) => items.forEach((it) => {
+      if (it.name !== oldName) return;
+      const kcal = Math.round(it.unit === 'גרם' && !isFixed(food) ? food.kcal100 * it.qty / 100 : unitKcal(food) * it.qty);
+      if (it.kcal !== kcal || it.name !== food.name) { it.kcal = kcal; it.name = food.name; n++; }
+    }));
+  }));
+  return n;
+}
+const loggedNote = (n) => (n ? ` · עודכנו ${n} פריטים בארוחות` : '');
+
 function editFood(f) {
   editing = { name: f.name, custom: !!f.custom };
   const base = FOODS.find((x) => x.name === f.name);
@@ -506,8 +520,8 @@ function editFood(f) {
   $('#feDelete').classList.toggle('hidden', !f.custom);
   $('#feReset').classList.toggle('hidden', !f.edited);
   $('#feHint').textContent = f.custom
-    ? 'שינוי כאן לא משנה ארוחות שכבר נרשמו.'
-    : `מוצר מהרשימה הקבועה (במקור ${fmt(unitKcal(base))} קק"ל). שינוי כאן לא משנה ארוחות שכבר נרשמו.`;
+    ? 'השינוי יעדכן גם ארוחות שכבר נרשמו עם המוצר.'
+    : `מוצר מהרשימה הקבועה (במקור ${fmt(unitKcal(base))} קק"ל). השינוי יעדכן גם ארוחות שכבר נרשמו.`;
   $('#foodEdit').showModal();
 }
 
@@ -515,31 +529,36 @@ function saveFoodEdit() {
   if (!editing) return;
   const kcal = parseFloat($('#feKcal').value);
   if (!(kcal >= 0)) return;
+  let changed = 0;
   if (editing.custom) {
     const f = findCustom(editing.name);
     const name = $('#feName').value.trim();
     if (!f || !name) return;
     if (name !== f.name && allFoods().some((x) => x !== f && x.name === name)) { toast('כבר יש מוצר בשם הזה'); return; }
+    const oldName = f.name;
     f.name = name;
     f.kcalUnit = kcal;
+    changed = recalcLogged(oldName, f);
   } else {
     const base = FOODS.find((x) => x.name === editing.name);
     if (!base) return;
     const ov = state.foodOverrides || (state.foodOverrides = {});
     if (Math.round(unitKcal(base)) === Math.round(kcal)) delete ov[base.name];
     else ov[base.name] = isFixed(base) ? { kcalUnit: kcal } : { kcal100: +(kcal * 100 / base.unitG).toFixed(2) };
+    changed = recalcLogged(base.name, findBuiltin(base.name));
   }
-  save(); renderProducts(); renderTray();
-  toast(`"${$('#feName').value.trim()}" עודכן ✓`);
+  save(); renderAll();
+  toast(`"${$('#feName').value.trim()}" עודכן ✓${loggedNote(changed)}`);
 }
 
 function resetFoodEdit() {
   if (!editing || editing.custom) return;
   delete state.foodOverrides[editing.name];
+  const changed = recalcLogged(editing.name, findBuiltin(editing.name));
   save();
   $('#foodEdit').close();
-  renderProducts(); renderTray();
-  toast(`"${editing.name}" חזר לערך המקורי`);
+  renderAll();
+  toast(`"${editing.name}" חזר לערך המקורי${loggedNote(changed)}`);
 }
 
 function deleteEditingFood() {
