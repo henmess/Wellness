@@ -228,7 +228,7 @@ function renderMeals() {
   list.innerHTML = items.length ? '' : `<li class="empty">עדיין לא נוספו פריטים לארוחת ${MEALS.find((m) => m.id === currentMeal).label}</li>`;
   items.forEach((f, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small>${f.qty} ${escapeHtml(f.unit)}</small></span>
+    li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small>${f.unit === 'גרם' ? f.qty : fmtQty(f.qty)} ${escapeHtml(f.unit)}</small></span>
       <span class="kcal">${fmt(f.kcal)} קק"ל</span><button class="del" title="מחיקה">✕</button>`;
     li.querySelector('.del').onclick = () => {
       d.meals[currentMeal].splice(i, 1);
@@ -390,6 +390,19 @@ function renderAll() {
   if (window.wellnessWatch) window.wellnessWatch.render();
 }
 
+// כמות להצגה: 0.25 → ¼, 1.5 → 1½
+function fmtQty(q) {
+  const whole = Math.floor(q);
+  const frac = { 0.25: '¼', 0.5: '½', 0.75: '¾' }[+(q - whole).toFixed(2)];
+  if (!frac) return String(+q.toFixed(2));
+  return whole ? `${whole}${frac}` : frac;
+}
+// צעד הכמות ביחידות: 0 → ¼ → ½ → 1 → 1½ …
+function stepQty(q, dir) {
+  if (dir > 0) return q < 0.5 ? q + 0.25 : q + 0.5;
+  return Math.max(0, q <= 0.5 ? q - 0.25 : q - 0.5);
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -433,7 +446,7 @@ function renderProducts() {
     b.className = 'product' + (inTray ? ' selected' : '');
     b.innerHTML = `<span class="p-icon">${catIcon(f)}</span><span class="p-name">${escapeHtml(f.name)}</span>
       <span class="p-kcal">${fmt(unitKcal(f))} קק"ל · ${escapeHtml(f.unit)}</span>
-      ${inTray ? `<span class="p-count">${inTray.mode === 'g' ? inTray.qty + 'g' : inTray.qty}</span>` : ''}
+      ${inTray ? `<span class="p-count">${inTray.mode === 'g' ? inTray.qty + 'g' : fmtQty(inTray.qty)}</span>` : ''}
       ${f.custom ? '<span class="p-edit" title="עריכה">✎</span>' : ''}`;
     b.onclick = (e) => {
       if (e.target.closest('.p-edit')) editMyFood(state.customFoods.indexOf(f));
@@ -521,20 +534,23 @@ function renderTray() {
          <option value="g" ${t.mode === 'g' ? 'selected' : ''}>גרם</option>`;
     li.innerHTML = `<span class="t-name">${catIcon(t.food)} ${escapeHtml(t.food.name)}</span>
       <span class="stepper"><button type="button" data-d="-1">−</button>
-        <input type="number" min="0" step="${t.mode === 'g' ? 10 : 0.5}" value="${t.qty}" aria-label="כמות">
+        <input type="number" min="0" step="${t.mode === 'g' ? 10 : 0.25}" value="${t.qty}" aria-label="כמות">
         <button type="button" data-d="1">+</button></span>
       <select aria-label="יחידה">${units}</select>
       <span class="t-kcal">${fmt(itemKcal(t))} קק"ל</span>
       <button type="button" class="del" title="הסרה">✕</button>`;
-    const step = () => (t.mode === 'g' ? 10 : 0.5);
     li.querySelectorAll('.stepper button').forEach((b) => {
-      b.onclick = () => { t.qty = Math.max(0, +(t.qty + step() * b.dataset.d).toFixed(1)); afterTrayChange(); };
+      b.onclick = () => {
+        const dir = Number(b.dataset.d);
+        t.qty = t.mode === 'g' ? Math.max(0, t.qty + 10 * dir) : +stepQty(t.qty, dir).toFixed(2);
+        afterTrayChange();
+      };
     });
     li.querySelector('input').onchange = (e) => { t.qty = Math.max(0, parseFloat(e.target.value) || 0); afterTrayChange(); };
     li.querySelector('select').onchange = (e) => {
       const mode = e.target.value;
       if (mode === t.mode) return;
-      t.qty = mode === 'g' ? Math.round(t.qty * t.food.unitG) : +(t.qty / t.food.unitG).toFixed(1);
+      t.qty = mode === 'g' ? Math.round(t.qty * t.food.unitG) : Math.max(0.25, Math.round(t.qty / t.food.unitG * 4) / 4);
       t.mode = mode;
       afterTrayChange();
     };
