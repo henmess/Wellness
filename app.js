@@ -23,8 +23,8 @@ const BMI_CATS = [
 const defaultState = () => ({
   active: 'p1',
   profiles: {
-    p1: { name: 'חן', sex: 'f', age: 32, height: 167, weight: 61, stepGoal: 8000, calGoal: 1900, color: '#ff8fab' },
-    p2: { name: 'ניר', sex: 'm', age: 34, height: 180, weight: 82, stepGoal: 10000, calGoal: 2500, color: '#2bb3a3' },
+    p1: { name: 'חן', sex: 'f', age: 37, height: 167, weight: 61, stepGoal: 8000, calGoal: 1900, color: '#ff8fab' },
+    p2: { name: 'ניר', sex: 'm', age: 40, height: 180, weight: 82, stepGoal: 10000, calGoal: 2500, color: '#2bb3a3' },
   },
   days: { p1: {}, p2: {} },
   customFoods: [],
@@ -77,6 +77,22 @@ function migrateNames() {
       if (RENAMED_FOODS[it.name]) it.name = RENAMED_FOODS[it.name];
     }));
   }));
+  // פעם אחת: הגילים המעודכנים (חן 37, ניר 40). יעד שהיה לפי ההמלצה מחושב מחדש לפי הגיל החדש;
+  // יעד ששונה ידנית נשאר כמו שהוא
+  Object.entries({ p1: 37, p2: 40 }).forEach(([id, age]) => {
+    const p = state.profiles[id];
+    if (!p || p.ageV) return;
+    const before = recommendFor(id);
+    const wasRec = p.goalsRec && p.calGoal === before.cal && p.stepGoal === before.steps;
+    p.age = age;
+    p.ageV = 1;
+    if (wasRec) {
+      const after = recommendFor(id);
+      p.calGoal = after.cal;
+      p.stepGoal = after.steps;
+    }
+    goalsJustUpdated = true;
+  });
   // פעם אחת: היעדים מתעדכנים להמלצה לפי הנתונים של כל אחד
   Object.entries(state.profiles).forEach(([id, p]) => {
     if (p.goalsRec) return;
