@@ -8,6 +8,9 @@ const MEALS = [
   { id: 'dinner', label: 'ערב', icon: '🌙' },
   { id: 'snack', label: 'נשנושים', icon: '🍎' },
 ];
+// חלוקה מומלצת של יעד הקלוריות היומי בין הארוחות
+const MEAL_SPLIT = { breakfast: 0.25, lunch: 0.35, dinner: 0.30, snack: 0.10 };
+const mealGoal = (pid, meal) => Math.round(state.profiles[pid].calGoal * MEAL_SPLIT[meal] / 10) * 10;
 const BMI_CATS = [
   { label: 'תת-משקל', min: 0, max: 18.5, color: '#6cb6ff' },
   { label: 'משקל תקין', min: 18.5, max: 25, color: '#22b07d' },
@@ -35,6 +38,7 @@ let currentMeal = guessMeal();
 let charts = {};
 let pickerCat = 'all';
 let tray = []; // { food, qty, mode: 'unit' | 'g' }
+let trayWho = null; // למי להוסיף: רשימת פרופילים (ברירת מחדל – הפרופיל הפעיל)
 // בונים מחדש את הבוחר רק כשהתוכן השתנה, כדי שבנייה מחדש (למשל אחרי שמירת שדה)
 // לא "תבלע" לחיצה שכבר התחילה על כרטיס או כפתור
 const lastKeys = {};
@@ -350,7 +354,9 @@ function renderMeals() {
   MEALS.forEach((m) => {
     const b = document.createElement('button');
     b.className = 'tab' + (m.id === currentMeal ? ' active' : '');
-    b.innerHTML = `<span>${m.icon} ${m.label}</span><small>${fmt(s.mealTotals[m.id])} קק"ל</small>`;
+    const goal = mealGoal(state.active, m.id);
+    b.innerHTML = `<span>${m.icon} ${m.label}</span>
+      <small class="${s.mealTotals[m.id] > goal ? 'over' : ''}">${fmt(s.mealTotals[m.id])} / ${fmt(goal)}</small>`;
     b.onclick = () => { currentMeal = m.id; renderMeals(); renderTray(); };
     tabs.appendChild(b);
   });
@@ -369,11 +375,15 @@ function renderMeals() {
     list.appendChild(li);
   });
 
-  const max = Math.max(...Object.values(s.mealTotals), 1);
-  $('#mealBars').innerHTML = MEALS.map((m) => `
-    <div class="meal-bar"><span>${m.icon} ${m.label}</span>
-      <div class="track"><div class="fill" style="width:${(s.mealTotals[m.id] / max) * 100}%"></div></div>
-      <span class="val">${fmt(s.mealTotals[m.id])}</span></div>`).join('');
+  // התקדמות מול היעד המומלץ לכל ארוחה
+  $('#mealBars').innerHTML = `<div class="meal-bars-head">יעד מומלץ לכל ארוחה (מתוך ${fmt(profile().calGoal)} ביום)</div>` +
+    MEALS.map((m) => {
+      const goal = mealGoal(state.active, m.id);
+      const eaten = s.mealTotals[m.id];
+      return `<div class="meal-bar ${eaten > goal ? 'over' : ''}"><span>${m.icon} ${m.label}</span>
+        <div class="track"><div class="fill" style="width:${Math.min(eaten / goal, 1) * 100}%"></div></div>
+        <span class="val"><bdi dir="ltr">${fmt(eaten)} / ${fmt(goal)}</bdi></span></div>`;
+    }).join('');
 }
 
 function renderSteps() {
@@ -735,12 +745,35 @@ function pickFood(f) {
   renderTray(); renderProducts();
 }
 
+function whoList() {
+  if (!trayWho || !tray.length) trayWho = [state.active];
+  return trayWho;
+}
+function renderTrayWho() {
+  const who = whoList();
+  const ids = Object.keys(state.profiles);
+  const opt = (key, label, color, on) =>
+    `<button type="button" class="chip ${on ? 'active' : ''}" data-who="${key}" style="--c:${color}">${label}</button>`;
+  $('#trayWho').innerHTML = '<span>למי:</span>' +
+    ids.map((id) => opt(id, escapeHtml(state.profiles[id].name), state.profiles[id].color, who.length === 1 && who[0] === id)).join('') +
+    opt('both', 'לשנינו 💑', 'var(--accent)', who.length === ids.length);
+  $('#trayWho').querySelectorAll('[data-who]').forEach((b) => {
+    b.onclick = () => {
+      trayWho = b.dataset.who === 'both' ? ids : [b.dataset.who];
+      renderTray();
+    };
+  });
+}
+
 function renderTray() {
   $('#tray').classList.toggle('hidden', !tray.length);
   const ul = $('#trayList');
   const meal = MEALS.find((m) => m.id === currentMeal);
   const total = tray.reduce((s, t) => s + itemKcal(t), 0);
-  $('#addTray').textContent = `הוספה לארוחת ${meal.label} · ${fmt(total)} קק"ל`;
+  const who = whoList();
+  const names = who.map((id) => state.profiles[id].name).join(' ו');
+  $('#addTray').textContent = `הוספה לארוחת ${meal.label}${who.length > 1 || who[0] !== state.active ? ` של ${names}` : ''} · ${fmt(total)} קק"ל${who.length > 1 ? ' לכל אחד' : ''}`;
+  renderTrayWho();
   if (unchanged('tray', JSON.stringify(tray.map((t) => [t.food.name, t.qty, t.mode, itemKcal(t)])))) return;
   ul.innerHTML = '';
   tray.forEach((t, i) => {
@@ -783,14 +816,19 @@ function afterTrayChange() { renderTray(); renderProducts(); }
 function addTrayToMeal() {
   const items = tray.filter((t) => t.qty > 0);
   if (!items.length) return;
-  const d = day(state.active, currentDate, true);
-  items.forEach((t) => d.meals[currentMeal].push({
-    name: t.food.name, qty: t.qty, unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t)),
-  }));
+  const who = whoList();
+  who.forEach((pid) => {
+    const d = day(pid, currentDate, true);
+    items.forEach((t) => d.meals[currentMeal].push({
+      name: t.food.name, qty: t.qty, unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t)),
+    }));
+  });
   const total = items.reduce((s, t) => s + itemKcal(t), 0);
+  const names = who.map((id) => state.profiles[id].name).join(' ו');
   tray = [];
+  trayWho = null;
   save(); renderAll();
-  toast(`נוספו ${items.length} מוצרים · ${fmt(total)} קק"ל`);
+  toast(`נוספו ${items.length} מוצרים · ${fmt(total)} קק"ל${who.length > 1 || who[0] !== state.active ? ` ל${names}` : ''}`);
 }
 
 /* ================= Settings ================= */
@@ -812,6 +850,7 @@ function openSettings() {
         <div class="field"><label>יעד צעדים</label><input name="stepGoal" type="number" step="500" value="${p.stepGoal}"></div>
         <div class="field"><label>יעד קלוריות</label><input name="calGoal" type="number" step="50" value="${p.calGoal}"></div>
       </div>
+      <p class="hint meal-split" data-split></p>
       <div class="field"><label>צבע</label><input name="color" type="color" value="${p.color}"></div>
     </div>`).join('');
   const tabs = $('#settingsTabs');
@@ -822,6 +861,17 @@ function openSettings() {
       tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
       document.querySelectorAll('.settings-profile').forEach((el) => el.classList.toggle('show', el.dataset.id === b.dataset.id));
     };
+  });
+  // החלוקה המומלצת לארוחות מתעדכנת בזמן הקלדת היעד
+  document.querySelectorAll('.settings-profile').forEach((el) => {
+    const input = el.querySelector('[name="calGoal"]');
+    const show = () => {
+      const g = parseFloat(input.value) || 0;
+      el.querySelector('[data-split]').innerHTML = '<b>חלוקה מומלצת:</b> ' + MEALS.map((m) =>
+        `${m.icon} ${m.label} ${fmt(Math.round(g * MEAL_SPLIT[m.id] / 10) * 10)}`).join(' · ');
+    };
+    input.addEventListener('input', show);
+    show();
   });
   $('#settings').showModal();
   $('.settings-body').scrollTop = 0;

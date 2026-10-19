@@ -229,6 +229,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .tray-list select { padding: 5px 8px; }
 .tray-list .t-kcal { font-weight: 700; color: var(--accent); white-space: nowrap; text-align: left; }
 .tray-list .del { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; }
+.tray-who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; font-size: .85rem; color: var(--muted); }
+.tray-who .chip.active { background: var(--c); border-color: var(--c); color: #fff; }
 .btn.wide { width: 100%; justify-content: center; padding: 12px; font-size: 1rem; }
 .custom-add { margin-top: 14px; }
 .custom-add summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: .9rem; }
@@ -263,7 +265,11 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .food-list li .del:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .food-list .empty { justify-content: center; color: var(--muted); background: transparent; border: 1px dashed var(--border); }
 .meal-bars { margin-top: 18px; display: grid; gap: 8px; }
-.meal-bar { display: grid; grid-template-columns: 70px 1fr 70px; align-items: center; gap: 10px; font-size: .85rem; }
+.meal-bar { display: grid; grid-template-columns: 70px 1fr 92px; align-items: center; gap: 10px; font-size: .85rem; }
+.meal-bars-head { color: var(--muted); font-size: .78rem; }
+.meal-bar.over .fill { background: var(--warn); }
+.meal-bar.over .val { color: var(--warn); font-weight: 700; }
+.tab small.over { color: var(--warn); font-weight: 700; }
 .meal-bar .track { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
 .meal-bar .fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .7s ease; }
 .meal-bar .val { text-align: left; color: var(--muted); }
