@@ -376,6 +376,14 @@ dialog[open] { animation: rise .3s ease; }
 .settings-profile .field input, .settings-profile .field select { background: var(--surface); width: 100%; }
 .settings-profile input[type=color] { height: 42px; padding: 4px; cursor: pointer; }
 .settings-profile .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.settings-profile .rec {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: var(--surface); border: 1px dashed color-mix(in srgb, var(--c) 50%, transparent);
+}
+.settings-profile .rec > div { flex: 1; min-width: 0; font-size: .88rem; }
+.settings-profile .rec small { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
+.settings-profile .rec .btn { padding: 7px 12px; white-space: nowrap; }
+.settings-profile .rec .btn:disabled { opacity: .7; cursor: default; }
 .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .settings-footer { display: flex; justify-content: flex-start; gap: 10px; margin-top: 18px; flex-direction: row-reverse; }
 

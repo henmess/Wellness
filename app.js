@@ -31,8 +31,10 @@ const defaultState = () => ({
   foodOverrides: {}, // שינויי קלוריות למוצרים מהרשימה הקבועה, לפי שם
 });
 
+let goalsJustUpdated = false;
 let state = load();
 migrateNames();
+if (goalsJustUpdated) persistLocal(); // נשמר מיד; השמירה המשותפת תדחוף בסנכרון הבא
 let currentDate = todayKey();
 let currentMeal = guessMeal();
 let charts = {};
@@ -75,6 +77,15 @@ function migrateNames() {
       if (RENAMED_FOODS[it.name]) it.name = RENAMED_FOODS[it.name];
     }));
   }));
+  // פעם אחת: היעדים מתעדכנים להמלצה לפי הנתונים של כל אחד
+  Object.entries(state.profiles).forEach(([id, p]) => {
+    if (p.goalsRec) return;
+    const r = recommendFor(id);
+    p.calGoal = r.cal;
+    p.stepGoal = r.steps;
+    p.goalsRec = 1;
+    goalsJustUpdated = true;
+  });
   // הוורוד הקודם של חן הוחלף בוורוד בהיר יותר
   if (chen && chen.color === '#ff6b8b') chen.color = '#ff8fab';
 }
@@ -122,6 +133,33 @@ function weightOn(id, key) {
   const keys = Object.keys(days).filter((k) => k <= key && days[k].weight).sort();
   return keys.length ? days[keys[keys.length - 1]].weight : profile(id).weight;
 }
+// יעד מומלץ לפי מין, גיל, גובה ומשקל:
+// הוצאה יומית = BMR (Mifflin-St Jeor) × 1.375 (פעילות קלה, ~8–10 אלף צעדים),
+// ואז התאמה לפי BMI: תקין – שמירה; 25–27: ‎-300; מעל 27: ‎-500; מתחת ל-18.5: ‎+300.
+function recommendGoals({ sex, age, height, weight }) {
+  const base = 10 * weight + 6.25 * height - 5 * age + (sex === 'm' ? 5 : -161);
+  const maintain = base * 1.375;
+  const bmi = bmiOf(weight, height);
+  let adj = 0;
+  let why = 'שמירה על המשקל (BMI תקין)';
+  if (bmi < 18.5) { adj = 300; why = 'עלייה הדרגתית במשקל (BMI נמוך)'; }
+  else if (bmi >= 27) { adj = -500; why = 'ירידה הדרגתית, כחצי ק"ג בשבוע'; }
+  else if (bmi >= 25) { adj = -300; why = 'ירידה עדינה, כ-300 גרם בשבוע'; }
+  const floor = sex === 'm' ? 1500 : 1200;
+  const r50 = (n) => Math.round(n / 50) * 50;
+  return {
+    cal: Math.max(floor, r50(maintain + adj)),
+    maintain: r50(maintain),
+    steps: adj < 0 ? 10000 : 8000,
+    bmi, why,
+  };
+}
+// function ולא const: נקרא כבר בטעינה (migrateNames) לפני שהשורה הזו רצה
+function recommendFor(pid) {
+  const p = state.profiles[pid];
+  return recommendGoals({ sex: p.sex, age: p.age, height: p.height, weight: weightOn(pid, todayKey()) });
+}
+
 function bmiOf(weight, heightCm) { const h = heightCm / 100; return weight / (h * h); }
 function bmiCat(bmi) { return BMI_CATS.find((c) => bmi < c.max); }
 // Mifflin-St Jeor
@@ -850,6 +888,7 @@ function openSettings() {
         <div class="field"><label>יעד צעדים</label><input name="stepGoal" type="number" step="500" value="${p.stepGoal}"></div>
         <div class="field"><label>יעד קלוריות</label><input name="calGoal" type="number" step="50" value="${p.calGoal}"></div>
       </div>
+      <div class="rec" data-rec></div>
       <p class="hint meal-split" data-split></p>
       <div class="field"><label>צבע</label><input name="color" type="color" value="${p.color}"></div>
     </div>`).join('');
@@ -861,6 +900,38 @@ function openSettings() {
       tabs.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
       document.querySelectorAll('.settings-profile').forEach((el) => el.classList.toggle('show', el.dataset.id === b.dataset.id));
     };
+  });
+  // המלצה ליעדים לפי הנתונים בטופס (ומשקל אחרון שנשקל, אם יש)
+  document.querySelectorAll('.settings-profile').forEach((el) => {
+    const pid = el.dataset.id;
+    const val = (n) => el.querySelector(`[name="${n}"]`).value;
+    // הכפתור נבנה פעם אחת ומתעדכן במקום, כדי שלחיצה עליו לא תיבלע כששדה אחר נשמר
+    const box = el.querySelector('[data-rec]');
+    box.innerHTML = '<div><b data-rec-title></b><small data-rec-why></small></div><button type="button" class="btn" data-apply></button>';
+    const btn = box.querySelector('[data-apply]');
+    let r = null;
+    const show = () => {
+      const logged = Object.values(state.days[pid] || {}).some((d) => d.weight);
+      const weight = logged ? weightOn(pid, todayKey()) : parseFloat(val('weight')) || 0;
+      r = recommendGoals({ sex: val('sex'), age: parseFloat(val('age')) || 0, height: parseFloat(val('height')) || 0, weight });
+      const same = Number(val('calGoal')) === r.cal && Number(val('stepGoal')) === r.steps;
+      box.querySelector('[data-rec-title]').textContent = `💡 מומלץ: ${fmt(r.cal)} קק"ל · ${fmt(r.steps)} צעדים`;
+      box.querySelector('[data-rec-why]').textContent = `לפי ${weight} ק"ג${logged ? ' (שקילה אחרונה)' : ''} · BMI ${r.bmi.toFixed(1)} · ${r.why}${r.cal !== r.maintain ? ` · לשמירה: ${fmt(r.maintain)}` : ''}`;
+      btn.textContent = same ? '✓ לפי ההמלצה' : 'החלה';
+      btn.classList.toggle('primary', !same);
+      btn.disabled = same;
+    };
+    btn.onclick = () => {
+      el.querySelector('[name="calGoal"]').value = r.cal;
+      el.querySelector('[name="stepGoal"]').value = r.steps;
+      el.querySelector('[name="calGoal"]').dispatchEvent(new Event('input'));
+      show();
+    };
+    ['sex', 'age', 'height', 'weight', 'calGoal', 'stepGoal'].forEach((n) => {
+      el.querySelector(`[name="${n}"]`).addEventListener('input', show);
+      el.querySelector(`[name="${n}"]`).addEventListener('change', show);
+    });
+    show();
   });
   // החלוקה המומלצת לארוחות מתעדכנת בזמן הקלדת היעד
   document.querySelectorAll('.settings-profile').forEach((el) => {
@@ -1002,3 +1073,7 @@ window.wellness = {
 
 bind();
 renderAll();
+if (goalsJustUpdated) {
+  goalsJustUpdated = false;
+  toast('🎯 היעדים עודכנו לפי ההמלצה – הפירוט בהגדרות');
+}
