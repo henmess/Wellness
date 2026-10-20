@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261020p">
+  <link rel="stylesheet" href="styles.css?v=20261020q">
 </head>
 <body>
   <header class="topbar">
@@ -271,7 +271,10 @@
   <!-- סריקת ברקוד -->
   <dialog id="scanDialog">
     <form method="dialog" class="scan-form" id="scanForm">
-      <h2>📷 מצלמה</h2>
+      <div class="scan-head">
+        <h2>📷 מצלמה</h2>
+        <button class="icon-btn" value="cancel" formnovalidate title="סגירה">✕</button>
+      </div>
       <div class="tabs scan-tabs">
         <button type="button" class="tab active" data-mode="barcode">🔍 ברקוד</button>
         <button type="button" class="tab" data-mode="meal">🍽 צילום ארוחה</button>
@@ -306,7 +309,6 @@
         </div>
       </div>
       </div>
-      <div class="food-edit-actions"><span class="grow"></span><button class="btn" value="cancel" formnovalidate>סגירה</button></div>
     </form>
   </dialog>
 
@@ -331,11 +333,11 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261020p"></script>
-  <script src="app.js?v=20261020p"></script>
-  <script src="claude.js?v=20261020p"></script>
-  <script src="smartadd.js?v=20261020p"></script>
-  <script src="watch.js?v=20261020p"></script>
-  <script type="module" src="sync.js?v=20261020p"></script>
+  <script src="foods.js?v=20261020q"></script>
+  <script src="app.js?v=20261020q"></script>
+  <script src="claude.js?v=20261020q"></script>
+  <script src="smartadd.js?v=20261020q"></script>
+  <script src="watch.js?v=20261020q"></script>
+  <script type="module" src="sync.js?v=20261020q"></script>
 </body>
 </html>
