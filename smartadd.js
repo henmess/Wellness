@@ -50,7 +50,7 @@
         let m;
         while ((m = re.exec(src))) {
           const start = m.index + m[1].length;
-          cands.push({ start, end: start + m[2].length + m[3].length, food, len: al.length, order });
+          cands.push({ start, end: start + m[2].length + m[3].length, food, len: al.length, order, weak: SHORT[al] === food.name });
         }
       });
     });
@@ -59,6 +59,14 @@
     const taken = [];
     cands.forEach((c) => { if (!taken.some((t) => c.start < t.end && t.start < c.end)) taken.push(c); });
     taken.sort((a, b) => a.start - b.start);
+    // שם קצר ("סלט", "מרק") שאחריו מילה לא מוכרת הוא כנראה מאכל אחר ("סלט קינואה") – לא לוקחים
+    for (let i = taken.length - 1; i >= 0; i--) {
+      const c = taken[i];
+      if (!c.weak) continue;
+      const next = (src.slice(c.end).match(/^\s+([^\s,]+)/) || [])[1];
+      const nextIsFood = taken[i + 1] && src.slice(c.end, taken[i + 1].start).trim() === '';
+      if (next && !nextIsFood && next[0] !== 'ו' && numberOf(next) == null && !FILLER.test(next)) taken.splice(i, 1);
+    }
 
     let consumed = 0; // עד איפה כבר נוצלו מילים (למשל "וחצי" של המאכל הקודם)
     const found = taken.map((c, i) => {
@@ -107,7 +115,9 @@
       afterTrayChange();
       $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    if (unknown.length) {
+    if (unknown.length && window.wellnessClaude && window.wellnessClaude.enabled()) {
+      askClaude(unknown, text, found.length);
+    } else if (unknown.length) {
       // מציגים את ההצעה "➕ הוספת ... כמוצר חדש" עבור הראשון שלא זוהה
       $('#pickerSearch').value = unknown[0];
       renderProducts();
@@ -116,6 +126,35 @@
         : `לא זיהיתי: ${unknown.join(', ')} – אפשר להוסיף כמוצר חדש`);
     } else if (found.length) {
       toast(`זוהו ${found.length} מוצרים – בדקו כמויות והוסיפו`);
+    }
+  }
+
+  async function askClaude(unknown, text, foundN) {
+    const btn = $('#freeTextGo');
+    btn.disabled = true;
+    btn.textContent = '🤖 בודק…';
+    toast(`${foundN ? `זוהו ${foundN} מוצרים · ` : ''}🤖 Claude מעריך: ${unknown.join(', ')}`);
+    try {
+      const items = await window.wellnessClaude.estimate(unknown, text);
+      items.filter((it) => it.kcal_per_portion >= 0).forEach((it) => tray.push({
+        food: { name: it.name, custom: true, oneOff: true, ai: true, unit: it.portion || 'מנה', kcalUnit: it.kcal_per_portion, note: it.note },
+        qty: it.qty > 0 ? it.qty : 1, mode: 'unit',
+      }));
+      if (items.length) {
+        $('#freeText').value = '';
+        afterTrayChange();
+        $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        toast(`🤖 נוספו ${items.length} הערכות – ⭐ ליד פריט שומר אותו ב"שלי"`);
+      } else {
+        toast('Claude לא מצא כאן מאכל');
+      }
+    } catch (e) {
+      toast(`🤖 ${e.friendly || 'שגיאה'} – אפשר להוסיף ידנית`);
+      $('#pickerSearch').value = unknown[0];
+      renderProducts();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'זיהוי';
     }
   }
 

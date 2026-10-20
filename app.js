@@ -771,7 +771,7 @@ function builtins() {
   return builtinFoods;
 }
 function allFoods() { return [...state.customFoods, ...builtins()]; }
-function catIcon(f) { return f.oneOff ? '📝' : f.custom ? '⭐' : (FOOD_CATS.find((c) => c.id === f.cat) || {}).icon || '🍽'; }
+function catIcon(f) { return f.ai ? '🤖' : f.oneOff ? '📝' : f.custom ? '⭐' : (FOOD_CATS.find((c) => c.id === f.cat) || {}).icon || '🍽'; }
 const isFixed = (f) => f.kcalUnit != null; // קלוריות קבועות למנה – בלי המרה לגרמים
 function unitKcal(f) { return isFixed(f) ? f.kcalUnit : f.kcal100 * f.unitG / 100; }
 function itemKcal(t) {
@@ -1066,8 +1066,8 @@ function renderTray() {
     const qty = t.mode === 'g'
       ? `<input type="number" min="0" step="10" value="${t.qty}" aria-label="כמות בגרמים">`
       : `<span class="qty-val" dir="ltr">${fmtQty(t.qty)}</span>`;
-    li.innerHTML = `<span class="t-name">${catIcon(t.food)} ${escapeHtml(t.food.name)}</span>
-      <span class="t-kcal">${fmt(itemKcal(t))} קק"ל</span>
+    li.innerHTML = `<span class="t-name">${catIcon(t.food)} ${escapeHtml(t.food.name)}${t.food.note ? `<small>${escapeHtml(t.food.note)}</small>` : ''}</span>
+      <span class="t-kcal">${t.food.oneOff ? '<button type="button" class="t-star" title="שמירה ב&quot;שלי&quot;">⭐</button>' : ''}${fmt(itemKcal(t))} קק"ל</span>
       <button type="button" class="del" title="הסרה">✕</button>
       <span class="stepper"><button type="button" data-d="-1" aria-label="פחות">−</button>${qty}<button type="button" data-d="1" aria-label="יותר">+</button></span>
       <select aria-label="יחידה">${units}</select>`;
@@ -1078,6 +1078,16 @@ function renderTray() {
         afterTrayChange();
       };
     });
+    const star = li.querySelector('.t-star');
+    if (star) star.onclick = () => {
+      const f = t.food;
+      if (allFoods().some((x) => x.name === f.name && !x.oneOff)) { toast('כבר יש מוצר בשם הזה'); return; }
+      const saved = { name: f.name, custom: true, unit: f.unit, kcalUnit: f.kcalUnit };
+      state.customFoods.unshift(saved);
+      t.food = saved;
+      save(); renderCatChips(); afterTrayChange();
+      toast(`"${f.name}" נשמר ב"שלי"`);
+    };
     const input = li.querySelector('input');
     if (input) input.onchange = (e) => {
       if (e.target.value === '') return; // נמחק בלי להקליד – הערך הקודם חוזר
@@ -1248,6 +1258,15 @@ function bind() {
 
   $('#pickerSearch').addEventListener('input', renderProducts);
   $('#clearTray').onclick = () => { tray = []; afterTrayChange(); };
+  $('#saveTrayMeal').onclick = () => {
+    if (!tray.length) return;
+    const meal = MEALS.find((m) => m.id === currentMeal);
+    const name = (prompt('שם לארוחה הקבועה:', `${meal.label} של ${profile().name}`) || '').trim();
+    if (!name) return;
+    (state.savedMeals || (state.savedMeals = [])).push({ id: Date.now().toString(36), name, items: tray.map((t) => loggedFromTray(t)) });
+    save(); renderSavedMeals();
+    toast(`"${name}" נשמרה כארוחה קבועה`);
+  };
   $('#addTray').onclick = addTrayToMeal;
   $('#feDelete').onclick = deleteEditingFood;
   $('#feReset').onclick = resetFoodEdit;

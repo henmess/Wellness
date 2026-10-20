@@ -217,6 +217,10 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .tray-list .t-name { grid-area: name; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .tray-list .t-kcal { grid-area: kcal; }
 .tray-list .del { grid-area: del; }
+.tray-list .t-name small { display: block; color: var(--muted); font-weight: 400; font-size: .74rem; }
+.tray-list .t-star { border: 0; background: none; cursor: pointer; font-size: 1.1rem; padding: 8px 10px; margin: -8px 0; }
+.tray-head { flex-wrap: wrap; gap: 6px; }
+.tray-head > span { white-space: nowrap; }
 .tray-list .stepper { grid-area: qty; }
 .tray-list select { grid-area: unit; justify-self: start; max-width: 100%; }
 .stepper .qty-val { min-width: 44px; text-align: center; font-weight: 700; font-size: 1.05rem; }

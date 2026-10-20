@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261020k">
+  <link rel="stylesheet" href="styles.css?v=20261020n">
 </head>
 <body>
   <header class="topbar">
@@ -105,7 +105,10 @@
         <div class="tray hidden" id="tray">
           <div class="tray-head">
             <b>🧺 בחרתי לארוחה</b>
-            <button class="link-btn" type="button" id="clearTray">ניקוי</button>
+            <span>
+              <button class="link-btn" type="button" id="saveTrayMeal">💾 שמירה כארוחה</button> ·
+              <button class="link-btn" type="button" id="clearTray">ניקוי</button>
+            </span>
           </div>
           <ul class="tray-list" id="trayList"></ul>
           <div class="tray-who" id="trayWho"></div>
@@ -251,6 +254,7 @@
         <section class="sync-panel" id="syncPanel"></section>
         <section class="sync-panel hidden" id="restorePanel"></section>
         <section class="sync-panel" id="watchPanel"></section>
+        <section class="sync-panel" id="claudePanel"></section>
         <div class="settings-actions">
           <button class="btn" type="button" id="exportBtn">⬇ ייצוא נתונים</button>
           <label class="btn">⬆ ייבוא נתונים<input type="file" id="importFile" accept="application/json" hidden></label>
@@ -313,10 +317,11 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261020k"></script>
-  <script src="app.js?v=20261020k"></script>
-  <script src="smartadd.js?v=20261020k"></script>
-  <script src="watch.js?v=20261020k"></script>
-  <script type="module" src="sync.js?v=20261020k"></script>
+  <script src="foods.js?v=20261020n"></script>
+  <script src="app.js?v=20261020n"></script>
+  <script src="claude.js?v=20261020n"></script>
+  <script src="smartadd.js?v=20261020n"></script>
+  <script src="watch.js?v=20261020n"></script>
+  <script type="module" src="sync.js?v=20261020n"></script>
 </body>
 </html>
