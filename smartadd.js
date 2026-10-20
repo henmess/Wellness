@@ -194,6 +194,7 @@ ${FORMAT}`;
     aiJob = job;
     $('#aiWhat').textContent = job.label ? 'קריאת הקלוריות מהתווית' : job.photo ? 'הערכה של הארוחה מהתמונה' : `הערכה של: ${job.phrases.join(', ')}`;
     $('#aiAnswer').value = '';
+    aiError('');
     $('#aiShare').textContent = job.photo ? '📤 שליחת התמונה והבקשה' : '📤 שליחה';
     $('#aiDialog').showModal();
   }
@@ -224,24 +225,121 @@ ${FORMAT}`;
     catch (e) { prompt('העתיקו את הבקשה:', text); }
   }
 
-  // התשובה: בלוק JSON (גם בתוך ```), ואם אין – שורות כמו "שניצל – 330 קק"ל"
-  function parseAiAnswer(raw) {
-    const t = raw.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-    const start = t.indexOf('{');
-    const end = t.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      try {
-        const obj = JSON.parse(t.slice(start, end + 1));
-        const items = (Array.isArray(obj) ? obj : obj.items || []).filter((it) => it && it.name && Number(it.kcal_per_portion) >= 0);
-        if (items.length) return { title: obj.title || '', items: items.map((it) => ({ ...it, kcal_per_portion: Math.round(Number(it.kcal_per_portion)) })) };
-      } catch (e) { /* ננסה שורות */ }
+  /* ---- קריאת תשובה מאפליקציית AI: סלחנית לכל מיני ניסוחים של ChatGPT / Gemini / Claude ---- */
+  // תווי כיוון נסתרים, רווח קשיח ומירכאות "חכמות" שנוספים בהעתקה מהטלפון
+  const tidy = (raw) => String(raw || '')
+    .replace(/[‎‏‪-‮⁦-⁩﻿]/g, '')
+    .replace(/ /g, ' ')
+    .replace(/[“”„]/g, '"').replace(/[‘’]/g, "'");
+
+  const num = (x) => {
+    if (typeof x === 'number') return x;
+    const t = String(x == null ? '' : x).trim();
+    const frac = t.match(/^(\d+)\s*\/\s*(\d+)/);
+    if (frac) return Number(frac[1]) / Number(frac[2]);
+    if (/^חצי/.test(t)) return 0.5;
+    const n = parseFloat(t.replace(/,/g, '.').replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const pick = (o, keys) => { for (const k of keys) if (o[k] != null && o[k] !== '') return o[k]; return undefined; };
+
+  // כל קטעי ה-JSON בטקסט: בתוך ``` וגם לפי סוגריים מאוזנים (מתעלם מסוגריים בתוך מחרוזות)
+  function jsonCandidates(t) {
+    const out = [];
+    for (const m of t.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) out.push(m[1]);
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== '{' && t[i] !== '[') continue;
+      let depth = 0, inStr = false;
+      for (let j = i; j < t.length; j++) {
+        const c = t[j];
+        if (inStr) { if (c === '\\') j++; else if (c === '"') inStr = false; continue; }
+        if (c === '"') inStr = true;
+        else if (c === '{' || c === '[') depth++;
+        else if (c === '}' || c === ']') { depth--; if (!depth) { out.push(t.slice(i, j + 1)); i = j; break; } }
+      }
     }
+    return out.sort((x, y) => y.length - x.length);
+  }
+  function tryJson(c) {
+    for (const v of [c, c.replace(/\/\/[^\n"]*$/gm, '').replace(/,\s*([}\]])/g, '$1')]) {
+      try { return JSON.parse(v); } catch (e) { /* הבא */ }
+    }
+    return undefined;
+  }
+
+  function normItem(it) {
+    if (!it || typeof it !== 'object') return null;
+    const name = String(pick(it, ['name', 'item', 'food', 'dish', 'שם', 'מאכל', 'title', 'meal_name', 'meal']) || '').trim();
+    const qty = num(pick(it, ['qty', 'quantity', 'amount', 'כמות'])) || 1;
+    let kcal = num(pick(it, ['kcal_per_portion', 'kcal_per_unit', 'calories_per_portion', 'kcal', 'calories', 'cal', 'energy', 'קלוריות', 'קק"ל']));
+    const total = num(pick(it, ['total_kcal', 'kcal_total', 'total_calories', 'calories_total']));
+    if (!Number.isFinite(kcal) && Number.isFinite(total)) kcal = total / qty;
+    if (!name || !Number.isFinite(kcal) || kcal < 0) return null;
+    const portion = pick(it, ['portion', 'unit', 'serving', 'serving_size', 'מנה', 'יחידה']);
+    return {
+      name, qty, kcal_per_portion: Math.round(kcal),
+      portion: typeof portion === 'string' && portion.length <= 20 ? portion : 'מנה',
+      note: String(pick(it, ['note', 'notes', 'assumption', 'portion_note', 'הערה']) || (typeof portion === 'string' && portion.length > 20 ? portion : '')),
+    };
+  }
+  function itemsOf(v) {
+    if (Array.isArray(v)) return { title: '', list: v };
+    if (!v || typeof v !== 'object') return { title: '', list: [] };
+    const arr = pick(v, ['items', 'foods', 'components', 'ingredients', 'meal', 'מרכיבים', 'פריטים']);
+    if (Array.isArray(arr)) return { title: String(pick(v, ['title', 'meal_name', 'שם']) || ''), list: arr };
+    return { title: '', list: [v] };
+  }
+
+  function parseAiAnswer(raw) {
+    const t = tidy(raw);
+    let best = null;
+    for (const c of jsonCandidates(t)) {
+      const v = tryJson(c);
+      if (v === undefined) continue;
+      const { title, list } = itemsOf(v);
+      const items = list.map(normItem).filter(Boolean);
+      if (items.length) { best = { title, items }; break; }
+    }
+    // JSON שבור: זוגות "name" ... "kcal" בכל מקום בטקסט
     const items = [];
-    t.split('\n').forEach((line) => {
-      const m = line.replace(/^[\s*•\-\d.)]+/, '').match(/^(.+?)[\s:–—-]+(?:כ-?|~)?\s*(\d{1,4})\s*(?:קק"ל|קלוריות|kcal|cal)/i);
-      if (m) items.push({ name: m[1].replace(/[:\-–—]+$/, '').trim(), portion: 'מנה', qty: 1, kcal_per_portion: Number(m[2]), note: '' });
+    for (const m of t.matchAll(/"(?:name|item|food|שם)"\s*:\s*"([^"]+)"[^{}]*?"(?:kcal_per_portion|kcal|calories|קלוריות)"\s*:\s*"?(\d+(?:\.\d+)?)/g)) {
+      items.push({ name: m[1].trim(), portion: 'מנה', qty: 1, kcal_per_portion: Math.round(Number(m[2])), note: '' });
+    }
+    // JSON שנחתך באמצע: רק חלק מהפריטים נסגרו – הזוגות מוצאים את כולם
+    if (best && best.items.length >= items.length) return best;
+    if (items.length) return { title: best ? best.title : '', items };
+    // טקסט רגיל: "שניצל – כ-330 קק"ל" בכל שורה
+    t.replace(/״/g, '"').split('\n').forEach((line) => {
+      const l = line.replace(/\*\*/g, '').replace(/^[\s*•\-\d.)|]+/, '');
+      if (/סה"כ|סך הכול|סך הכל|total/i.test(l)) return;
+      const m = l.match(/^(.+?)[\s:–—|-]+(?:כ-?|~|בערך\s*)?\s*(\d{1,4})(?:\s*[-–]\s*(\d{1,4}))?\s*(?:קק"ל|קלוריות|kcal|cal)/i);
+      if (m) {
+        const kcal = m[3] ? (Number(m[2]) + Number(m[3])) / 2 : Number(m[2]); // טווח 300-350 → ממוצע
+        items.push({ name: m[1].replace(/[:\-–—|(]+$/, '').trim(), portion: 'מנה', qty: 1, kcal_per_portion: Math.round(kcal), note: '' });
+      }
     });
     return { title: '', items };
+  }
+
+  // תשובה לתווית: JSON עם קלוריות ל-100 גרם, או "535 קק"ל ל-100 גרם" בטקסט
+  function parseLabelAnswer(raw) {
+    const t = tidy(raw);
+    for (const c of jsonCandidates(t)) {
+      const v = tryJson(c);
+      if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+      const kcal = num(pick(v, ['kcal_per_100g', 'kcal_100g', 'calories_per_100g', 'energy_kcal_100g', 'kcal', 'calories', 'קלוריות']));
+      if (Number.isFinite(kcal) && kcal >= 0) {
+        return { name: String(pick(v, ['name', 'product', 'שם']) || ''), kcal_per_100g: kcal, serving_g: num(pick(v, ['serving_g', 'serving', 'serving_size', 'מנה'])) || 100 };
+      }
+    }
+    const m = t.replace(/״/g, '"').match(/(\d{1,4}(?:\.\d)?)\s*(?:קק"ל|קלוריות|kcal)/i);
+    return m ? { name: '', kcal_per_100g: Number(m[1]), serving_g: 100 } : null;
+  }
+
+  function aiError(msg) {
+    const el = $('#aiError');
+    el.textContent = msg || '';
+    el.classList.toggle('hidden', !msg);
   }
 
   function addAiItems(items, title) {
@@ -268,15 +366,20 @@ ${FORMAT}`;
   }
 
   function addFromAnswer() {
+    if (!$('#aiAnswer').value.trim()) { aiError('התיבה ריקה – הדביקו כאן את התשובה (לחיצה ארוכה ← הדבקה)'); return; }
+    aiError('');
     if (aiJob.label) {
       const r = parseLabelAnswer($('#aiAnswer').value);
-      if (!r) { toast('לא מצאתי בתשובה קלוריות ל-100 גרם'); return; }
+      if (!r) { aiError('לא מצאתי בתשובה קלוריות ל-100 גרם. הדביקו את כל התשובה, או הקלידו רק את המספר (למשל: 535 קק"ל)'); return; }
       $('#aiDialog').close();
       showScanForm({ name: r.name || aiJob.name || '', kcal100: r.kcal_per_100g, serving: r.serving_g || 100, source: 'נקרא מהתווית – בדקו לפני שמירה' });
       return;
     }
     const { title, items } = parseAiAnswer($('#aiAnswer').value);
-    if (!items.length) { toast('לא מצאתי בתשובה מאכלים וקלוריות – הדביקו את כל התשובה'); return; }
+    if (!items.length) {
+      aiError('לא הצלחתי לקרוא מהתשובה מאכלים וקלוריות. ודאו שהדבקתם את כל התשובה (כולל הסוגריים { }), או כתבו שורה לכל מאכל, למשל: שניצל – 330 קק"ל');
+      return;
+    }
     $('#aiDialog').close();
     if (!aiJob.photo) $('#freeText').value = '';
     addAiItems(items, title);
@@ -534,10 +637,17 @@ ${FORMAT}`;
     $('#aiShare').onclick = shareJob;
     $('#aiCopy').onclick = copyPrompt;
     $('#aiAdd').onclick = addFromAnswer;
+    // "הדבקה": אם כבר הדבקתם בתיבה – משתמשים בה; אחרת מנסים לקרוא מהלוח (בלי למחוק את התיבה אם הלוח ריק/חסום)
     $('#aiPaste').onclick = async () => {
-      try { $('#aiAnswer').value = await navigator.clipboard.readText(); } catch (e) { $('#aiAnswer').focus(); toast('לחיצה ארוכה בתיבה ← הדבקה'); return; }
-      if ($('#aiAnswer').value.trim()) addFromAnswer();
+      if (!$('#aiAnswer').value.trim()) {
+        let clip = '';
+        try { clip = await navigator.clipboard.readText(); } catch (e) { /* חסום */ }
+        if (!clip.trim()) { $('#aiAnswer').focus(); aiError('לא הצלחתי לקרוא מהלוח – לחיצה ארוכה בתיבה ← הדבקה, ואז "הוספה לארוחה"'); return; }
+        $('#aiAnswer').value = clip;
+      }
+      addFromAnswer();
     };
+    $('#aiAnswer').addEventListener('input', () => aiError(''));
     $('#scanOnce').onclick = () => {
       const f = scannedFood(true);
       if (!f) return;
