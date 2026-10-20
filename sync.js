@@ -26,7 +26,9 @@ function stable(v) {
   }
   return JSON.stringify(v);
 }
-const metaOf = (s) => clean({ profiles: s.profiles, customFoods: s.customFoods || [], foodOverrides: s.foodOverrides || {} });
+const metaOf = (s) => clean({
+  profiles: s.profiles, customFoods: s.customFoods || [], foodOverrides: s.foodOverrides || {}, savedMeals: s.savedMeals || [],
+});
 
 function loadConf() {
   try { return JSON.parse(localStorage.getItem(CONF_KEY)); } catch (e) { return null; }
@@ -94,6 +96,7 @@ async function pull() {
         s.profiles = meta.profiles;
         s.customFoods = meta.customFoods || [];
         s.foodOverrides = meta.foodOverrides || {};
+        s.savedMeals = meta.savedMeals || [];
       });
     }
   }

@@ -32,6 +32,7 @@ const defaultState = () => ({
   days: { p1: {}, p2: {} },
   customFoods: [],
   foodOverrides: {}, // שינויי קלוריות למוצרים מהרשימה הקבועה, לפי שם
+  savedMeals: [],    // ארוחות שמורות: { id, name, items: [{ name, qty, unit, kcal }] }
 });
 
 let goalsJustUpdated = false;
@@ -44,6 +45,9 @@ let charts = {};
 let pickerCat = 'all';
 let tray = []; // { food, qty, mode: 'unit' | 'g' }
 let trayWho = null; // למי להוסיף: רשימת פרופילים (ברירת מחדל – הפרופיל הפעיל)
+let trayPortion = {}; // כשמוסיפים לשניים: גודל המנה לכל אחד (1 = כמו בסל)
+const PORTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+const portionOf = (pid) => trayPortion[pid] || 1;
 // בונים מחדש את הבוחר רק כשהתוכן השתנה, כדי שבנייה מחדש (למשל אחרי שמירת שדה)
 // לא "תבלע" לחיצה שכבר התחילה על כרטיס או כפתור
 const lastKeys = {};
@@ -414,7 +418,7 @@ function renderMeals() {
     const goal = mealGoal(state.active, m.id);
     b.innerHTML = `<span>${m.icon} ${m.label}</span>
       <small class="${s.mealTotals[m.id] > goal ? 'over' : ''}">${fmt(s.mealTotals[m.id])} / ${fmt(goal)}</small>`;
-    b.onclick = () => { currentMeal = m.id; renderMeals(); renderTray(); };
+    b.onclick = () => { currentMeal = m.id; renderMeals(); renderTray(); renderMealActions(); };
     tabs.appendChild(b);
   });
 
@@ -600,6 +604,8 @@ function renderAll() {
   renderCatChips();
   renderProducts();
   renderTray();
+  renderMealActions();
+  renderSavedMeals();
   renderSteps();
   renderBmi();
   renderCouple();
@@ -794,6 +800,79 @@ function deleteEditingFood() {
   toast(`"${f.name}" נמחק`);
 }
 
+// פריט שנרשם (או פריט בארוחה שמורה) → פריט בסל, לפי הערך העדכני של המוצר
+function trayFromLogged(it) {
+  const food = allFoods().find((f) => f.name === it.name);
+  if (food) return { food, qty: it.qty, mode: it.unit === 'גרם' && !isFixed(food) ? 'g' : 'unit' };
+  return { food: { name: it.name, custom: true, oneOff: true, unit: it.unit, kcalUnit: it.qty ? it.kcal / it.qty : it.kcal }, qty: it.qty, mode: 'unit' };
+}
+const loggedFromTray = (t, mult = 1) => ({
+  name: t.food.name, qty: +(t.qty * mult).toFixed(2), unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t) * mult),
+});
+
+/* ---------- כמו אתמול + ארוחות שמורות ---------- */
+function renderMealActions() {
+  const el = $('#mealActions');
+  const meal = MEALS.find((m) => m.id === currentMeal);
+  const today = (day() && day().meals[currentMeal]) || [];
+  // היום האחרון (עד שבוע אחורה) שבו נרשמה הארוחה הזו
+  let prevKey = null;
+  for (let i = 1; i <= 7 && !prevKey; i++) {
+    const k = shiftKey(currentDate, -i);
+    const d = day(state.active, k);
+    if (d && (d.meals[currentMeal] || []).length) prevKey = k;
+  }
+  const prevLabel = prevKey === shiftKey(currentDate, -1) ? 'אתמול'
+    : prevKey ? parseKey(prevKey).toLocaleDateString('he-IL', { weekday: 'long' }) : '';
+  const key = JSON.stringify([state.active, currentDate, currentMeal, today.length, prevKey]);
+  if (unchanged('mealActions', key)) return;
+  el.innerHTML = `
+    ${prevKey ? `<button type="button" class="chip" data-act="copy">↺ כמו ${prevLabel}</button>` : ''}
+    ${today.length ? '<button type="button" class="chip" data-act="saveMeal">💾 שמירה כארוחה קבועה</button>' : ''}`;
+  const copy = el.querySelector('[data-act=copy]');
+  if (copy) copy.onclick = () => {
+    const items = day(state.active, prevKey).meals[currentMeal].map((it) => loggedFromTray(trayFromLogged(it)));
+    day(state.active, currentDate, true).meals[currentMeal].push(...items);
+    save(); renderAll();
+    toast(`נוספה ארוחת ${meal.label} של ${prevLabel} · ${fmt(items.reduce((s, x) => s + x.kcal, 0))} קק"ל`);
+  };
+  const sv = el.querySelector('[data-act=saveMeal]');
+  if (sv) sv.onclick = () => {
+    const name = (prompt('שם לארוחה הקבועה:', `${meal.label} של ${profile().name}`) || '').trim();
+    if (!name) return;
+    (state.savedMeals || (state.savedMeals = [])).push({
+      id: Date.now().toString(36), name, items: today.map((it) => ({ name: it.name, qty: it.qty, unit: it.unit, kcal: it.kcal })),
+    });
+    save(); renderSavedMeals();
+    toast(`"${name}" נשמרה – מופיעה למעלה בכרטיס הארוחות`);
+  };
+}
+
+function renderSavedMeals() {
+  const el = $('#savedMeals');
+  const list = state.savedMeals || [];
+  if (unchanged('savedMeals', JSON.stringify(list))) return;
+  el.classList.toggle('hidden', !list.length);
+  el.innerHTML = '<span class="sm-title">⭐ ארוחות קבועות:</span>' + list.map((m) => {
+    const kcal = m.items.reduce((s, it) => s + itemKcal(trayFromLogged(it)), 0);
+    return `<span class="sm-chip" data-id="${m.id}"><button type="button" class="sm-pick">${escapeHtml(m.name)} · ${fmt(kcal)}</button><button type="button" class="sm-del" title="מחיקה">✕</button></span>`;
+  }).join('');
+  el.querySelectorAll('.sm-chip').forEach((chip) => {
+    const m = list.find((x) => x.id === chip.dataset.id);
+    chip.querySelector('.sm-pick').onclick = () => {
+      m.items.forEach((it) => tray.push(trayFromLogged(it)));
+      afterTrayChange();
+      $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast(`"${m.name}" בסל – אפשר לשנות כמויות ולבחור למי`);
+    };
+    chip.querySelector('.sm-del').onclick = () => {
+      if (!confirm(`למחוק את הארוחה הקבועה "${m.name}"?`)) return;
+      state.savedMeals = state.savedMeals.filter((x) => x.id !== m.id);
+      save(); renderSavedMeals();
+    };
+  });
+}
+
 function pickFood(f) {
   if (!f.oneOff) f = allFoods().find((x) => x.name === f.name && !!x.custom === !!f.custom) || f;
   const t = tray.find((x) => x.food === f);
@@ -803,7 +882,7 @@ function pickFood(f) {
 }
 
 function whoList() {
-  if (!trayWho || !tray.length) trayWho = [state.active];
+  if (!trayWho || !tray.length) { trayWho = [state.active]; trayPortion = {}; }
   return trayWho;
 }
 function renderTrayWho() {
@@ -814,9 +893,25 @@ function renderTrayWho() {
   $('#trayWho').innerHTML = '<span>למי:</span>' +
     ids.map((id) => opt(id, escapeHtml(state.profiles[id].name), state.profiles[id].color, who.length === 1 && who[0] === id)).join('') +
     opt('both', 'לשנינו 💑', 'var(--accent)', who.length === ids.length);
+  // לשניים: מנה לכל אחד (למשל חצי לחן ומנה שלמה לניר)
+  if (who.length > 1) {
+    $('#trayWho').innerHTML += `<div class="portions">${who.map((id) => `
+      <span class="portion" style="--c:${state.profiles[id].color}">${escapeHtml(state.profiles[id].name)}:
+        <button type="button" data-pd="-1" data-pid="${id}">−</button>
+        <b dir="ltr">×${fmtQty(portionOf(id))}</b>
+        <button type="button" data-pd="1" data-pid="${id}">+</button></span>`).join('')}</div>`;
+  }
   $('#trayWho').querySelectorAll('[data-who]').forEach((b) => {
     b.onclick = () => {
       trayWho = b.dataset.who === 'both' ? ids : [b.dataset.who];
+      if (trayWho.length === 1) trayPortion = {};
+      renderTray();
+    };
+  });
+  $('#trayWho').querySelectorAll('[data-pd]').forEach((b) => {
+    b.onclick = () => {
+      const i = PORTIONS.indexOf(portionOf(b.dataset.pid)) + Number(b.dataset.pd);
+      trayPortion[b.dataset.pid] = PORTIONS[Math.max(0, Math.min(PORTIONS.length - 1, i))];
       renderTray();
     };
   });
@@ -829,7 +924,11 @@ function renderTray() {
   const total = tray.reduce((s, t) => s + itemKcal(t), 0);
   const who = whoList();
   const names = who.map((id) => state.profiles[id].name).join(' ו');
-  $('#addTray').textContent = `הוספה לארוחת ${meal.label}${who.length > 1 || who[0] !== state.active ? ` של ${names}` : ''} · ${fmt(total)} קק"ל${who.length > 1 ? ' לכל אחד' : ''}`;
+  const sameForAll = who.every((id) => portionOf(id) === 1);
+  const kcalText = who.length > 1
+    ? (sameForAll ? `${fmt(total)} קק"ל לכל אחד` : who.map((id) => `${state.profiles[id].name} ${fmt(total * portionOf(id))}`).join(' · '))
+    : `${fmt(total)} קק"ל`;
+  $('#addTray').textContent = `הוספה לארוחת ${meal.label}${who.length > 1 || who[0] !== state.active ? ` של ${names}` : ''} · ${kcalText}`;
   renderTrayWho();
   if (unchanged('tray', JSON.stringify(tray.map((t) => [t.food.name, t.qty, t.mode, itemKcal(t)])))) return;
   ul.innerHTML = '';
@@ -880,14 +979,14 @@ function addTrayToMeal() {
   const who = whoList();
   who.forEach((pid) => {
     const d = day(pid, currentDate, true);
-    items.forEach((t) => d.meals[currentMeal].push({
-      name: t.food.name, qty: t.qty, unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t)),
-    }));
+    const mult = who.length > 1 ? portionOf(pid) : 1;
+    items.forEach((t) => d.meals[currentMeal].push(loggedFromTray(t, mult)));
   });
   const total = items.reduce((s, t) => s + itemKcal(t), 0);
   const names = who.map((id) => state.profiles[id].name).join(' ו');
   tray = [];
   trayWho = null;
+  trayPortion = {};
   save(); renderAll();
   toast(`נוספו ${items.length} מוצרים · ${fmt(total)} קק"ל${who.length > 1 || who[0] !== state.active ? ` ל${names}` : ''}`);
 }

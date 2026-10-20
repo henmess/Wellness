@@ -302,6 +302,17 @@ input[type=number]::placeholder { color: var(--muted); opacity: .6; }
   .habits .h-ask { grid-column: 1 / -1; justify-content: stretch; } .habits .h-ask .chip { flex: 1; }
 }
 
+.saved-meals { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+.saved-meals .sm-title { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+.sm-chip { display: inline-flex; flex: none; border: 1px solid var(--accent); border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.sm-chip button { border: 0; background: none; cursor: pointer; padding: 6px 10px; font-weight: 600; font-size: .85rem; white-space: nowrap; }
+.sm-chip .sm-del { color: var(--muted); padding: 6px 8px; border-inline-start: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.meal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.meal-actions:empty { display: none; }
+.portions { display: flex; gap: 10px; flex-wrap: wrap; width: 100%; margin-top: 4px; }
+.portion { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--c); color: var(--text); font-weight: 600; }
+.portion button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; }
+
 /* ---------- Steps ---------- */
 .steps-input { display: flex; align-items: center; gap: 12px; justify-content: center; }
 .steps-input input { width: 160px; text-align: center; font-size: 1.8rem; font-weight: 800; padding: 8px; }
