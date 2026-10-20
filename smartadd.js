@@ -118,6 +118,8 @@
     if (unknown.length && window.wellnessClaude && window.wellnessClaude.enabled()) {
       askClaude(unknown, text, found.length);
     } else if (unknown.length) {
+      // בלי מפתח: הערכה חינמית דרך אפליקציית AI
+      openAiDialog({ phrases: unknown, text });
       // מציגים את ההצעה "➕ הוספת ... כמוצר חדש" עבור הראשון שלא זוהה
       $('#pickerSearch').value = unknown[0];
       renderProducts();
@@ -158,6 +160,104 @@
     }
   }
 
+  /* ---------------- הערכה חינמית: שליחה לאפליקציית AI והדבקת התשובה ---------------- */
+  let aiJob = null; // { phrases, text } או { photo: dataUrl, note }
+  const FORMAT = '{"title":"שם קצר לארוחה","items":[{"name":"שניצל","portion":"יחידה","qty":1,"kcal_per_portion":330,"note":"כ-130 גרם"}]}';
+
+  function aiPrompt(job) {
+    const what = job.photo
+      ? `בתמונה המצורפת הארוחה שלי.${job.note ? ` הערה: ${job.note}.` : ''}`
+      : `אכלתי: ${job.phrases.join(', ')} (מתוך המשפט: "${job.text}").`;
+    return `אני רושמת ביומן תזונה מה אכלתי. ${what}
+פרק כל מרכיב בנפרד (כולל שמן ורטבים אם יש בהם הרבה קלוריות), הערך גודל מנה ישראלי טיפוסי וקלוריות ליחידה.
+ענה רק בבלוק JSON בפורמט הזה, בלי הסבר:
+${FORMAT}`;
+  }
+
+  // dataURL → File בלי await, כדי שהשיתוף יקרה מיד בלחיצה (הדפדפן דורש זאת)
+  function dataUrlToFile(dataUrl, name) {
+    const [head, b64] = dataUrl.split(',');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name, { type: head.match(/:(.*?);/)[1] });
+  }
+
+  function openAiDialog(job) {
+    if (job.photo) job.file = dataUrlToFile(job.photo, 'meal.jpg');
+    aiJob = job;
+    $('#aiWhat').textContent = job.photo ? 'הערכה של הארוחה מהתמונה' : `הערכה של: ${job.phrases.join(', ')}`;
+    $('#aiAnswer').value = '';
+    $('#aiShare').textContent = job.photo ? '📤 שליחת התמונה והבקשה' : '📤 שליחה';
+    $('#aiDialog').showModal();
+  }
+
+  async function shareJob() {
+    const text = aiPrompt(aiJob);
+    try {
+      if (aiJob.file) {
+        if (navigator.canShare && navigator.canShare({ files: [aiJob.file] })) {
+          await navigator.share({ files: [aiJob.file], text });
+          return;
+        }
+      } else if (navigator.share) {
+        await navigator.share({ text });
+        return;
+      }
+    } catch (e) {
+      if (e.name === 'AbortError') return; // ביטלו את השיתוף
+    }
+    // אין שיתוף (למשל במחשב): מעתיקים את הבקשה, ואת התמונה מעלים ידנית
+    await copyPrompt();
+    if (aiJob.photo) toast('הבקשה הועתקה – פתחו את אפליקציית ה-AI, הדביקו והעלו את התמונה');
+  }
+
+  async function copyPrompt() {
+    const text = aiPrompt(aiJob);
+    try { await navigator.clipboard.writeText(text); toast('הבקשה הועתקה – הדביקו אותה באפליקציית ה-AI'); }
+    catch (e) { prompt('העתיקו את הבקשה:', text); }
+  }
+
+  // התשובה: בלוק JSON (גם בתוך ```), ואם אין – שורות כמו "שניצל – 330 קק"ל"
+  function parseAiAnswer(raw) {
+    const t = raw.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        const obj = JSON.parse(t.slice(start, end + 1));
+        const items = (Array.isArray(obj) ? obj : obj.items || []).filter((it) => it && it.name && Number(it.kcal_per_portion) >= 0);
+        if (items.length) return { title: obj.title || '', items: items.map((it) => ({ ...it, kcal_per_portion: Math.round(Number(it.kcal_per_portion)) })) };
+      } catch (e) { /* ננסה שורות */ }
+    }
+    const items = [];
+    t.split('\n').forEach((line) => {
+      const m = line.replace(/^[\s*•\-\d.)]+/, '').match(/^(.+?)[\s:–—-]+(?:כ-?|~)?\s*(\d{1,4})\s*(?:קק"ל|קלוריות|kcal|cal)/i);
+      if (m) items.push({ name: m[1].replace(/[:\-–—]+$/, '').trim(), portion: 'מנה', qty: 1, kcal_per_portion: Number(m[2]), note: '' });
+    });
+    return { title: '', items };
+  }
+
+  function addAiItems(items, title) {
+    items.forEach((it) => tray.push({
+      food: { name: it.name, custom: true, oneOff: true, ai: true, unit: it.portion || 'מנה', kcalUnit: it.kcal_per_portion, note: it.note || '' },
+      qty: it.qty > 0 ? Number(it.qty) : 1, mode: 'unit',
+    }));
+    lastPhotoTitle = title || '';
+    afterTrayChange();
+    $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const total = items.reduce((s, it) => s + it.kcal_per_portion * (it.qty > 0 ? it.qty : 1), 0);
+    toast(`🤖 ${title ? `${title} · ` : ''}${items.length} פריטים · כ-${fmt(total)} קק"ל – ⭐ / 💾 לשמירה`);
+  }
+
+  function addFromAnswer() {
+    const { title, items } = parseAiAnswer($('#aiAnswer').value);
+    if (!items.length) { toast('לא מצאתי בתשובה מאכלים וקלוריות – הדביקו את כל התשובה'); return; }
+    $('#aiDialog').close();
+    if (!aiJob.photo) $('#freeText').value = '';
+    addAiItems(items, title);
+  }
+
   /* ---------------- ברקוד ---------------- */
   let stream = null;
   let scanTimer = null;
@@ -180,9 +280,11 @@
     if (mode === 'meal') mealStatus();
   }
   function mealStatus() {
-    $('#mealStatus').textContent = window.wellnessClaude && window.wellnessClaude.enabled()
-      ? 'Claude מזהה את המרכיבים בתמונה ומעריך כמויות וקלוריות. התמונה מוקטנת לפני השליחה.'
-      : 'כדי להעריך מתמונה צריך מפתח Claude: ⚙ ← "🤖 הערכת קלוריות עם Claude".';
+    const auto = !!(window.wellnessClaude && window.wellnessClaude.enabled());
+    $('#mealEstimate').classList.toggle('hidden', !auto);
+    $('#mealStatus').textContent = auto
+      ? '📤 חינם דרך אפליקציית AI שלכם, או 🤖 אוטומטית עם מפתח ה-API. התמונה מוקטנת לפני השליחה.'
+      : '📤 התמונה והבקשה נשלחות לאפליקציית ה-AI שלכם (חינם), ואת התשובה מדביקים חזרה כאן.';
   }
 
   async function openScanner() {
@@ -254,6 +356,7 @@
 
   /* ---------------- צילום ארוחה ---------------- */
   let photoB64 = null;
+  let photoUrl = null;
 
   // מקטינים ל-1568 פיקסלים בצלע הארוכה (מספיק לזיהוי אוכל, וזול יותר) ומקודדים JPEG
   function shrinkImage(file, maxSide = 1568) {
@@ -281,6 +384,8 @@
       photoB64 = dataUrl.split(',')[1];
       $('#mealPreview').src = dataUrl;
       $('#mealPreview').classList.remove('hidden');
+      photoUrl = dataUrl;
+      $('#mealShare').disabled = false;
       $('#mealEstimate').disabled = !(window.wellnessClaude && window.wellnessClaude.enabled());
       mealStatus();
     } catch (err) {
@@ -298,19 +403,13 @@
       const { title, items } = await window.wellnessClaude.estimatePhoto(photoB64, $('#mealNote').value.trim());
       const ok = (items || []).filter((it) => it.kcal_per_portion >= 0);
       if (!ok.length) { toast('Claude לא זיהה אוכל בתמונה'); return; }
-      ok.forEach((it) => tray.push({
-        food: { name: it.name, custom: true, oneOff: true, ai: true, unit: it.portion || 'מנה', kcalUnit: it.kcal_per_portion, note: it.note },
-        qty: it.qty > 0 ? it.qty : 1, mode: 'unit',
-      }));
-      lastPhotoTitle = title || '';
       photoB64 = null;
+      photoUrl = null;
       $('#mealPreview').classList.add('hidden');
       $('#mealNote').value = '';
+      $('#mealShare').disabled = true;
       $('#scanDialog').close();
-      afterTrayChange();
-      $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const total = ok.reduce((s, it) => s + it.kcal_per_portion * (it.qty > 0 ? it.qty : 1), 0);
-      toast(`🤖 ${title ? `${title} · ` : ''}${ok.length} פריטים · כ-${fmt(total)} קק"ל – 💾 לשמירה כארוחה`);
+      addAiItems(ok, title);
     } catch (err) {
       toast(`🤖 ${err.friendly || 'שגיאה בניתוח התמונה'}`);
     } finally {
@@ -337,6 +436,20 @@
     document.querySelectorAll('.scan-tabs .tab').forEach((t) => { t.onclick = () => setScanMode(t.dataset.mode); });
     $('#mealPhoto').addEventListener('change', onPhoto);
     $('#mealEstimate').onclick = estimateMeal;
+    $('#mealShare').onclick = () => {
+      if (!photoUrl) return;
+      const job = { photo: photoUrl, note: $('#mealNote').value.trim() };
+      $('#scanDialog').close();
+      openAiDialog(job);
+      shareJob();
+    };
+    $('#aiShare').onclick = shareJob;
+    $('#aiCopy').onclick = copyPrompt;
+    $('#aiAdd').onclick = addFromAnswer;
+    $('#aiPaste').onclick = async () => {
+      try { $('#aiAnswer').value = await navigator.clipboard.readText(); } catch (e) { $('#aiAnswer').focus(); toast('לחיצה ארוכה בתיבה ← הדבקה'); return; }
+      if ($('#aiAnswer').value.trim()) addFromAnswer();
+    };
     $('#scanOnce').onclick = () => {
       const f = scannedFood(true);
       if (!f) return;
@@ -359,6 +472,6 @@
     };
   }
 
-  window.wellnessSmart = { parseFreeText, lookup, photoTitle: () => (tray.some((t) => t.food.ai) ? lastPhotoTitle : '') };
+  window.wellnessSmart = { parseFreeText, parseAiAnswer, lookup, photoTitle: () => (tray.some((t) => t.food.ai) ? lastPhotoTitle : '') };
   bind();
 })();
