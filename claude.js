@@ -44,8 +44,31 @@ If a phrase lists separate components, return one item per component; a single d
 Use the quantity stated in the text when there is one. Names, portions and notes are in Hebrew.
 Phrases that are not food or drink (e.g. "מוזר", "היום") are ignored.`;
 
+  const PHOTO_SCHEMA = {
+    ...SCHEMA,
+    properties: { title: { type: 'string', description: 'שם קצר לארוחה בעברית, למשל "שניצל עם פירה וסלט"' }, ...SCHEMA.properties },
+    required: ['title', 'items'],
+  };
+  const PHOTO_SYSTEM = `You estimate calories from a photo of a meal, for a personal food diary in Israel.
+Identify each visible food and drink, estimate its portion from the plate size and the other items, and give calories per portion.
+Return one item per component (e.g. schnitzel, mashed potatoes, salad), include visible oil, sauces and dressings as their own items when they add meaningful calories.
+If the user adds a note (for example that they ate only half), apply it to the quantities. Names, portions and notes are in Hebrew.
+If the photo shows no food, return an empty items list.`;
+
   // phrases: מה שלא זוהה; context: כל הטקסט, כדי להבין כמויות והקשר
   async function estimate(phrases, context) {
+    return ask(SYSTEM, SCHEMA, `הטקסט המלא: "${context}"\nלא נמצאו ברשימה: ${phrases.map((p) => `"${p}"`).join(', ')}`).then((r) => r.items || []);
+  }
+
+  // תמונה (base64 JPEG) → { title, items }
+  async function estimatePhoto(base64, note) {
+    return ask(PHOTO_SYSTEM, PHOTO_SCHEMA, [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+      { type: 'text', text: note ? `הערה: ${note}` : 'מה יש בארוחה הזו וכמה קלוריות?' },
+    ]);
+  }
+
+  async function ask(system, schema, content) {
     const { Anthropic, api } = await client();
     try {
       const response = await api.beta.messages.create({
@@ -53,14 +76,14 @@ Phrases that are not food or drink (e.g. "מוזר", "היום") are ignored.`;
         max_tokens: 4000,
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
-        output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
-        system: SYSTEM,
-        messages: [{ role: 'user', content: `הטקסט המלא: "${context}"\nלא נמצאו ברשימה: ${phrases.map((p) => `"${p}"`).join(', ')}` }],
+        output_config: { effort: 'low', format: { type: 'json_schema', schema } },
+        system,
+        messages: [{ role: 'user', content }],
       });
       if (response.stop_reason === 'refusal') throw Object.assign(new Error('refusal'), { friendly: 'Claude לא הצליח להעריך את זה' });
       if (response.stop_reason === 'max_tokens') throw Object.assign(new Error('max_tokens'), { friendly: 'התשובה נקטעה – נסו טקסט קצר יותר' });
       const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-      return JSON.parse(text).items || [];
+      return JSON.parse(text);
     } catch (e) {
       if (e.friendly) throw e;
       const friendly = e instanceof Anthropic.AuthenticationError ? 'מפתח ה-API לא תקין'
@@ -99,6 +122,6 @@ Phrases that are not food or drink (e.g. "מוזר", "היום") are ignored.`;
     if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } };
   }
 
-  window.wellnessClaude = { enabled: () => !!getKey(), estimate, renderPanel };
+  window.wellnessClaude = { enabled: () => !!getKey(), estimate, estimatePhoto, renderPanel };
   renderPanel();
 })();

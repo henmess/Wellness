@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261020n">
+  <link rel="stylesheet" href="styles.css?v=20261020p">
 </head>
 <body>
   <header class="topbar">
@@ -271,7 +271,20 @@
   <!-- סריקת ברקוד -->
   <dialog id="scanDialog">
     <form method="dialog" class="scan-form" id="scanForm">
-      <h2>📷 סריקת ברקוד</h2>
+      <h2>📷 מצלמה</h2>
+      <div class="tabs scan-tabs">
+        <button type="button" class="tab active" data-mode="barcode">🔍 ברקוד</button>
+        <button type="button" class="tab" data-mode="meal">🍽 צילום ארוחה</button>
+      </div>
+      <div class="meal-photo hidden" id="mealMode">
+        <label class="btn primary wide photo-pick">📸 צילום או בחירת תמונה
+          <input type="file" id="mealPhoto" accept="image/*" capture="environment" hidden></label>
+        <img id="mealPreview" class="hidden" alt="תמונת הארוחה">
+        <input id="mealNote" placeholder="פרטים נוספים (לא חובה): אכלתי חצי מהצלחת, בלי הרוטב…">
+        <button type="button" class="btn primary wide" id="mealEstimate" disabled>🤖 הערכת קלוריות</button>
+        <p class="hint" id="mealStatus"></p>
+      </div>
+      <div id="barcodeMode">
       <div id="scanCamera">
         <video id="scanVideo" playsinline muted></video>
         <p class="hint" id="scanStatus">מכוונים את המצלמה לברקוד…</p>
@@ -291,6 +304,7 @@
           <button type="button" class="btn primary" id="scanSave">⭐ שמירה ב"שלי" ובחירה</button>
           <button type="button" class="btn" id="scanOnce">📝 רק להיום</button>
         </div>
+      </div>
       </div>
       <div class="food-edit-actions"><span class="grow"></span><button class="btn" value="cancel" formnovalidate>סגירה</button></div>
     </form>
@@ -317,11 +331,11 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261020n"></script>
-  <script src="app.js?v=20261020n"></script>
-  <script src="claude.js?v=20261020n"></script>
-  <script src="smartadd.js?v=20261020n"></script>
-  <script src="watch.js?v=20261020n"></script>
-  <script type="module" src="sync.js?v=20261020n"></script>
+  <script src="foods.js?v=20261020p"></script>
+  <script src="app.js?v=20261020p"></script>
+  <script src="claude.js?v=20261020p"></script>
+  <script src="smartadd.js?v=20261020p"></script>
+  <script src="watch.js?v=20261020p"></script>
+  <script type="module" src="sync.js?v=20261020p"></script>
 </body>
 </html>

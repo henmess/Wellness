@@ -162,6 +162,7 @@
   let stream = null;
   let scanTimer = null;
   let scanned = null; // { code, source }
+  let lastPhotoTitle = ''; // שם שהציע Claude לארוחה מהתמונה – ברירת מחדל לשמירה כארוחה קבועה
 
   function stopCamera() {
     clearInterval(scanTimer);
@@ -170,11 +171,30 @@
     stream = null;
   }
 
+  function setScanMode(mode) {
+    document.querySelectorAll('.scan-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
+    $('#barcodeMode').classList.toggle('hidden', mode !== 'barcode');
+    $('#mealMode').classList.toggle('hidden', mode !== 'meal');
+    if (mode === 'barcode') startBarcodeCamera();
+    else stopCamera();
+    if (mode === 'meal') mealStatus();
+  }
+  function mealStatus() {
+    $('#mealStatus').textContent = window.wellnessClaude && window.wellnessClaude.enabled()
+      ? 'Claude מזהה את המרכיבים בתמונה ומעריך כמויות וקלוריות. התמונה מוקטנת לפני השליחה.'
+      : 'כדי להעריך מתמונה צריך מפתח Claude: ⚙ ← "🤖 הערכת קלוריות עם Claude".';
+  }
+
   async function openScanner() {
     scanned = null;
     $('#scanResult').classList.add('hidden');
     $('#scanCode').value = '';
     $('#scanDialog').showModal();
+    setScanMode('barcode');
+  }
+
+  async function startBarcodeCamera() {
+    if (stream || scanned) return;
     const status = $('#scanStatus');
     if (!('BarcodeDetector' in window) || !navigator.mediaDevices) {
       $('#scanCamera').classList.add('hidden');
@@ -232,6 +252,73 @@
     }
   }
 
+  /* ---------------- צילום ארוחה ---------------- */
+  let photoB64 = null;
+
+  // מקטינים ל-1568 פיקסלים בצלע הארוכה (מספיק לזיהוי אוכל, וזול יותר) ומקודדים JPEG
+  function shrinkImage(file, maxSide = 1568) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(img.src);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function onPhoto(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await shrinkImage(file);
+      photoB64 = dataUrl.split(',')[1];
+      $('#mealPreview').src = dataUrl;
+      $('#mealPreview').classList.remove('hidden');
+      $('#mealEstimate').disabled = !(window.wellnessClaude && window.wellnessClaude.enabled());
+      mealStatus();
+    } catch (err) {
+      toast('לא הצלחתי לפתוח את התמונה');
+    }
+    e.target.value = '';
+  }
+
+  async function estimateMeal() {
+    if (!photoB64) return;
+    const btn = $('#mealEstimate');
+    btn.disabled = true;
+    btn.textContent = '🤖 מנתח את התמונה…';
+    try {
+      const { title, items } = await window.wellnessClaude.estimatePhoto(photoB64, $('#mealNote').value.trim());
+      const ok = (items || []).filter((it) => it.kcal_per_portion >= 0);
+      if (!ok.length) { toast('Claude לא זיהה אוכל בתמונה'); return; }
+      ok.forEach((it) => tray.push({
+        food: { name: it.name, custom: true, oneOff: true, ai: true, unit: it.portion || 'מנה', kcalUnit: it.kcal_per_portion, note: it.note },
+        qty: it.qty > 0 ? it.qty : 1, mode: 'unit',
+      }));
+      lastPhotoTitle = title || '';
+      photoB64 = null;
+      $('#mealPreview').classList.add('hidden');
+      $('#mealNote').value = '';
+      $('#scanDialog').close();
+      afterTrayChange();
+      $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const total = ok.reduce((s, it) => s + it.kcal_per_portion * (it.qty > 0 ? it.qty : 1), 0);
+      toast(`🤖 ${title ? `${title} · ` : ''}${ok.length} פריטים · כ-${fmt(total)} קק"ל – 💾 לשמירה כארוחה`);
+    } catch (err) {
+      toast(`🤖 ${err.friendly || 'שגיאה בניתוח התמונה'}`);
+    } finally {
+      btn.textContent = '🤖 הערכת קלוריות';
+      btn.disabled = !photoB64;
+    }
+  }
+
   function scannedFood(oneOff) {
     const name = $('#scanName').value.trim();
     const kcal100 = parseFloat($('#scanKcal').value);
@@ -247,6 +334,9 @@
     $('#scanLookup').onclick = () => lookup($('#scanCode').value);
     $('#scanCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lookup($('#scanCode').value); } });
     $('#scanDialog').addEventListener('close', stopCamera);
+    document.querySelectorAll('.scan-tabs .tab').forEach((t) => { t.onclick = () => setScanMode(t.dataset.mode); });
+    $('#mealPhoto').addEventListener('change', onPhoto);
+    $('#mealEstimate').onclick = estimateMeal;
     $('#scanOnce').onclick = () => {
       const f = scannedFood(true);
       if (!f) return;
@@ -269,6 +359,6 @@
     };
   }
 
-  window.wellnessSmart = { parseFreeText, lookup };
+  window.wellnessSmart = { parseFreeText, lookup, photoTitle: () => (tray.some((t) => t.food.ai) ? lastPhotoTitle : '') };
   bind();
 })();

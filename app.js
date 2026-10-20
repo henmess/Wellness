@@ -1261,7 +1261,8 @@ function bind() {
   $('#saveTrayMeal').onclick = () => {
     if (!tray.length) return;
     const meal = MEALS.find((m) => m.id === currentMeal);
-    const name = (prompt('שם לארוחה הקבועה:', `${meal.label} של ${profile().name}`) || '').trim();
+    const suggested = (window.wellnessSmart && window.wellnessSmart.photoTitle()) || `${meal.label} של ${profile().name}`;
+    const name = (prompt('שם לארוחה הקבועה:', suggested) || '').trim();
     if (!name) return;
     (state.savedMeals || (state.savedMeals = [])).push({ id: Date.now().toString(36), name, items: tray.map((t) => loggedFromTray(t)) });
     save(); renderSavedMeals();
