@@ -639,7 +639,7 @@ function builtins() {
   return builtinFoods;
 }
 function allFoods() { return [...state.customFoods, ...builtins()]; }
-function catIcon(f) { return f.custom ? '⭐' : (FOOD_CATS.find((c) => c.id === f.cat) || {}).icon || '🍽'; }
+function catIcon(f) { return f.oneOff ? '📝' : f.custom ? '⭐' : (FOOD_CATS.find((c) => c.id === f.cat) || {}).icon || '🍽'; }
 const isFixed = (f) => f.kcalUnit != null; // קלוריות קבועות למנה – בלי המרה לגרמים
 function unitKcal(f) { return isFixed(f) ? f.kcalUnit : f.kcal100 * f.unitG / 100; }
 function itemKcal(t) {
@@ -792,7 +792,7 @@ function deleteEditingFood() {
 }
 
 function pickFood(f) {
-  f = allFoods().find((x) => x.name === f.name && !!x.custom === !!f.custom) || f;
+  if (!f.oneOff) f = allFoods().find((x) => x.name === f.name && !!x.custom === !!f.custom) || f;
   const t = tray.find((x) => x.food === f);
   if (t) t.qty += t.mode === 'g' ? f.unitG : 1;
   else tray.push({ food: f, qty: 1, mode: 'unit' });
@@ -853,7 +853,11 @@ function renderTray() {
       };
     });
     const input = li.querySelector('input');
-    if (input) input.onchange = (e) => { t.qty = Math.max(0, parseFloat(e.target.value) || 0); afterTrayChange(); };
+    if (input) input.onchange = (e) => {
+      if (e.target.value === '') return; // נמחק בלי להקליד – הערך הקודם חוזר
+      t.qty = Math.max(0, parseFloat(e.target.value) || 0);
+      afterTrayChange();
+    };
     li.querySelector('select').onchange = (e) => {
       const mode = e.target.value;
       if (mode === t.mode) return;
@@ -981,7 +985,27 @@ function saveSettings() {
 }
 
 /* ================= Events ================= */
+function bindNumberFields() {
+  document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!el.matches || !el.matches('input[type=number]') || el.value === '' || el.dataset.keep != null) return;
+    el.dataset.prev = el.value;
+    el.dataset.ph = el.placeholder;
+    el.placeholder = el.value;
+    el.value = '';
+  });
+  document.addEventListener('focusout', (e) => {
+    const el = e.target;
+    if (!el.matches || !el.matches('input[type=number]') || el.dataset.prev == null) return;
+    if (el.value === '') el.value = el.dataset.prev;
+    el.placeholder = el.dataset.ph || '';
+    delete el.dataset.prev;
+    delete el.dataset.ph;
+  });
+}
+
 function bind() {
+  bindNumberFields();
   $('#prevDay').onclick = () => { currentDate = shiftKey(currentDate, -1); renderAll(); };
   $('#nextDay').onclick = () => { if (currentDate < todayKey()) { currentDate = shiftKey(currentDate, 1); renderAll(); } };
   $('#todayBtn').onclick = () => { currentDate = todayKey(); renderAll(); };
@@ -997,6 +1021,18 @@ function bind() {
   $('#foodEditForm').addEventListener('submit', (e) => {
     if (e.submitter && e.submitter.value === 'save') saveFoodEdit();
   });
+  // מוצר חד-פעמי: נכנס לסל ולחישוב היום, לא נשמר ב"שלי"
+  $('#oneOffBtn').onclick = () => {
+    const kcal = parseFloat($('#customKcal').value);
+    if (!(kcal >= 0)) { $('#customKcal').focus(); toast('הזינו כמה קלוריות'); return; }
+    const name = $('#customName').value.trim() || 'פריט נוסף';
+    tray.push({ food: { name, custom: true, oneOff: true, unit: 'מנה', kcalUnit: kcal }, qty: 1, mode: 'unit' });
+    $('#customName').value = ''; $('#customKcal').value = '';
+    $('#pickerSearch').value = '';
+    afterTrayChange();
+    $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(`"${name}" נוסף לארוחה הזו בלבד`);
+  };
   $('#customForm').onsubmit = (e) => {
     e.preventDefault();
     const name = $('#customName').value.trim();
@@ -1018,7 +1054,7 @@ function bind() {
     d.steps = Math.max(0, Math.round(val) || 0);
     save(); renderAll();
   };
-  $('#stepsInput').addEventListener('change', (e) => setSteps(parseFloat(e.target.value)));
+  $('#stepsInput').addEventListener('change', (e) => { if (e.target.value !== '') setSteps(parseFloat(e.target.value)); });
   document.querySelectorAll('[data-steps]').forEach((b) => {
     b.onclick = () => setSteps(((day() && day().steps) || 0) + Number(b.dataset.steps));
   });

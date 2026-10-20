@@ -235,6 +235,9 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px c
 .custom-add { margin-top: 14px; }
 .custom-add summary { cursor: pointer; color: var(--muted); font-weight: 600; font-size: .9rem; }
 .custom-add .add-food { margin-top: 10px; }
+.custom-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 600px) { .custom-actions { width: 100%; } .custom-actions .btn { flex: 1; justify-content: center; } }
+input[type=number]::placeholder { color: var(--muted); opacity: .6; }
 .product .p-edit {
   position: absolute; top: 6px; left: 6px; width: 32px; height: 32px; border-radius: 50%;
   display: grid; place-items: center; font-size: 1rem; background: var(--surface); border: 1px solid var(--border);

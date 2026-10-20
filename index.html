@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261019c">
+  <link rel="stylesheet" href="styles.css?v=20261020a">
 </head>
 <body>
   <header class="topbar">
@@ -117,9 +117,13 @@
               <label for="customKcal">קק"ל למנה</label>
               <input id="customKcal" type="number" min="0" placeholder="350" required>
             </div>
-            <button class="btn" type="submit">שמירה ובחירה</button>
+            <div class="custom-actions">
+              <button class="btn" type="submit">⭐ שמירה ב"שלי" ובחירה</button>
+              <button class="btn" type="button" id="oneOffBtn">📝 רק להיום</button>
+            </div>
           </form>
-          <p class="hint">המוצר יישמר תחת "שלי". לעריכה או מחיקה: מחפשים אותו ולוחצים ✎ על הכרטיס.</p>
+          <p class="hint"><b>שמירה ב"שלי"</b> – המוצר נשמר לפעם הבאה (לעריכה: מחפשים ולוחצים ✎).
+            <b>רק להיום</b> – נכנס לחישוב הקלוריות של הארוחה בלבד, בלי לשמור (השם לא חובה).</p>
         </details>
 
         <ul class="food-list" id="foodItems"></ul>
@@ -270,9 +274,9 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261019c"></script>
-  <script src="app.js?v=20261019c"></script>
-  <script src="watch.js?v=20261019c"></script>
-  <script type="module" src="sync.js?v=20261019c"></script>
+  <script src="foods.js?v=20261020a"></script>
+  <script src="app.js?v=20261020a"></script>
+  <script src="watch.js?v=20261020a"></script>
+  <script type="module" src="sync.js?v=20261020a"></script>
 </body>
 </html>
