@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261020a">
+  <link rel="stylesheet" href="styles.css?v=20261020e">
 </head>
 <body>
   <header class="topbar">
@@ -225,7 +225,7 @@
     </div>
 
     <footer class="foot">
-      הנתונים נשמרים בדפדפן במכשיר הזה. החישובים הם הערכה בלבד ואינם תחליף לייעוץ רפואי.
+      החישובים הם הערכה בלבד ואינם תחליף לייעוץ רפואי. <span id="appVersion"></span>
     </footer>
   </main>
 
@@ -271,12 +271,13 @@
     </form>
   </dialog>
 
+  <div class="update-bar hidden" id="updateBar">✨ יש גרסה חדשה של האתר <button type="button" class="btn primary">עדכון</button></div>
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261020a"></script>
-  <script src="app.js?v=20261020a"></script>
-  <script src="watch.js?v=20261020a"></script>
-  <script type="module" src="sync.js?v=20261020a"></script>
+  <script src="foods.js?v=20261020e"></script>
+  <script src="app.js?v=20261020e"></script>
+  <script src="watch.js?v=20261020e"></script>
+  <script type="module" src="sync.js?v=20261020e"></script>
 </body>
 </html>

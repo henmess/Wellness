@@ -1,5 +1,8 @@
 'use strict';
 
+// גרסת האתר (מה-?v= של app.js ב-index.html)
+const APP_VERSION = (document.currentScript && new URL(document.currentScript.src).searchParams.get('v')) || '';
+
 /* ================= State ================= */
 const STORE_KEY = 'wellness-v1';
 const MEALS = [
@@ -986,13 +989,19 @@ function saveSettings() {
 
 /* ================= Events ================= */
 function bindNumberFields() {
-  document.addEventListener('focusin', (e) => {
-    const el = e.target;
-    if (!el.matches || !el.matches('input[type=number]') || el.value === '' || el.dataset.keep != null) return;
+  const isNum = (el) => el && el.matches && el.matches('input[type=number]') && el.dataset.keep == null;
+  const start = (el) => {
+    if (el.value === '') return;
+    if (el.dataset.ph == null) el.dataset.ph = el.placeholder;
     el.dataset.prev = el.value;
-    el.dataset.ph = el.placeholder;
     el.placeholder = el.value;
     el.value = '';
+  };
+  document.addEventListener('focusin', (e) => { if (isNum(e.target)) start(e.target); });
+  // בטלפון סגירת המקלדת לא מוציאה את הפוקוס מהשדה, ולכן נגיעה חוזרת לא מפעילה focusin –
+  // נגיעה בשדה שכבר בפוקוס מתחילה הזנה חדשה
+  document.addEventListener('pointerdown', (e) => {
+    if (isNum(e.target) && document.activeElement === e.target) start(e.target);
   });
   document.addEventListener('focusout', (e) => {
     const el = e.target;
@@ -1123,8 +1132,24 @@ window.wellness = {
   toast,
 };
 
+// בדיקת גרסה חדשה: GitHub Pages שומר את הדף במטמון עד 10 דקות, אז בודקים בעצמנו
+async function checkForUpdate() {
+  if (!APP_VERSION || location.protocol === 'file:') return;
+  try {
+    const html = await (await fetch(`${location.pathname}?check=${Date.now()}`, { cache: 'no-store' })).text();
+    const m = html.match(/app\.js\?v=([\w-]+)/);
+    if (!m || m[1] === APP_VERSION) return;
+    const bar = $('#updateBar');
+    bar.classList.remove('hidden');
+    bar.querySelector('button').onclick = () => location.replace(`${location.pathname}?v=${m[1]}${location.hash}`);
+  } catch (e) { /* offline */ }
+}
+
 bind();
 renderAll();
+$('#appVersion').textContent = APP_VERSION ? `גרסה ${APP_VERSION}` : '';
+checkForUpdate();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 if (goalsJustUpdated) {
   goalsJustUpdated = false;
   toast('🎯 היעדים עודכנו לפי ההמלצה – הפירוט בהגדרות');

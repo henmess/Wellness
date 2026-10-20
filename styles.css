@@ -432,6 +432,15 @@ dialog[open] { animation: rise .3s ease; }
 .sync-banner .sb-close { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 4px; }
 @media (max-width: 600px) { .sync-banner { flex-wrap: wrap; } .sync-banner .btn { order: 3; width: 100%; justify-content: center; } }
 
+.update-bar {
+  /* ממורכז בלי transform, כי האנימציה rise דורסת אותו */
+  position: fixed; top: 12px; left: 16px; right: 16px; margin: 0 auto; z-index: 60;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: fit-content; max-width: calc(100% - 32px); padding: 10px 12px 10px 16px; border-radius: 16px;
+  background: var(--surface); border: 1px solid var(--accent); box-shadow: var(--shadow); font-weight: 600;
+  animation: rise .35s ease both;
+}
+
 /* ---------- Toast & footer ---------- */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 120px); z-index: 50;
