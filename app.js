@@ -44,6 +44,7 @@ let currentMeal = guessMeal();
 let charts = {};
 let pickerCat = 'all';
 let tray = []; // { food, qty, mode: 'unit' | 'g' }
+let editingLogged = null; // פריט שנרשם שפתוח לשינוי כמות: "pid|date|meal|index"
 let trayWho = null; // למי להוסיף: רשימת פרופילים (ברירת מחדל – הפרופיל הפעיל)
 let trayPortion = {}; // כשמוסיפים לשניים: גודל המנה לכל אחד (1 = כמו בסל)
 const PORTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -341,18 +342,19 @@ function habitSuggestions(pid, date) {
       // הכמות הנפוצה ביותר, והקלוריות לפי הערך העדכני של המוצר
       const [qty, unit] = Object.entries(c.qtys).sort((a, b) => b[1] - a[1])[0][0].split('|');
       const q = Number(qty);
-      const food = allFoods().find((f) => f.name === c.name);
-      const kcal = food
+      const per = c.last.item.per;
+      const food = per == null && allFoods().find((f) => f.name === c.name);
+      const kcal = per != null ? Math.round(per * q) : food
         ? Math.round(unit === 'גרם' && !isFixed(food) ? food.kcal100 * q / 100 : unitKcal(food) * q)
         : Math.round(c.last.item.kcal / c.last.item.qty * q);
-      return { meal: c.meal, name: c.name, qty: q, unit, kcal, days: c.days, of: prev.length };
+      return { meal: c.meal, name: c.name, qty: q, unit, kcal, days: c.days, of: prev.length, ...(per != null ? { per } : {}) };
     })
     .sort((a, b) => MEALS.findIndex((m) => m.id === a.meal) - MEALS.findIndex((m) => m.id === b.meal) || b.days - a.days)
     .slice(0, 5);
 }
 
 function addHabit(sg) {
-  day(state.active, currentDate, true).meals[sg.meal].push({ name: sg.name, qty: sg.qty, unit: sg.unit, kcal: sg.kcal });
+  day(state.active, currentDate, true).meals[sg.meal].push({ name: sg.name, qty: sg.qty, unit: sg.unit, kcal: sg.kcal, ...(sg.per != null ? { per: sg.per } : {}) });
 }
 
 function renderHabits() {
@@ -425,14 +427,44 @@ function renderMeals() {
   const list = $('#foodItems');
   const items = (d && d.meals[currentMeal]) || [];
   list.innerHTML = items.length ? '' : `<li class="empty">עדיין לא נוספו פריטים לארוחת ${MEALS.find((m) => m.id === currentMeal).label}</li>`;
+  const editKey = (i) => `${state.active}|${currentDate}|${currentMeal}|${i}`;
   items.forEach((f, i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small><bdi dir="ltr">${f.unit === 'גרם' ? f.qty : fmtQty(f.qty)}</bdi> ${escapeHtml(f.unit)}</small></span>
-      <span class="kcal">${fmt(f.kcal)} קק"ל</span><button class="del" title="מחיקה">✕</button>`;
-    li.querySelector('.del').onclick = () => {
+    const grams = f.unit === 'גרם';
+    const editing = editingLogged === editKey(i);
+    li.className = editing ? 'editing' : '';
+    li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small><bdi dir="ltr">${grams ? f.qty : fmtQty(f.qty)}</bdi> ${escapeHtml(f.unit)}${editing ? '' : ' <span class="edit-hint" title="לחצו לשינוי כמות">✎</span>'}</small></span>
+      <span class="kcal">${fmt(f.kcal)} קק"ל</span><button class="del" title="מחיקה">✕</button>
+      ${editing ? `<div class="logged-edit">
+        <span class="stepper"><button type="button" data-q="-1" aria-label="פחות">−</button>
+          <b dir="ltr">${grams ? `${f.qty}g` : fmtQty(f.qty)}</b>
+          <button type="button" data-q="1" aria-label="יותר">+</button></span>
+        <button type="button" class="chip" data-q="add1">+1 ${grams ? '' : escapeHtml(f.unit)}</button>
+        <button type="button" class="btn primary" data-q="done">✓</button>
+      </div>` : ''}`;
+    li.querySelector('.del').onclick = (e) => {
+      e.stopPropagation();
       d.meals[currentMeal].splice(i, 1);
+      editingLogged = null;
       save(); renderAll();
     };
+    // לחיצה על הפריט פותחת/סוגרת את שינוי הכמות
+    li.querySelector('.name').onclick = () => { editingLogged = editing ? null : editKey(i); renderMeals(); };
+    li.querySelectorAll('[data-q]').forEach((b) => {
+      b.onclick = (e) => {
+        e.stopPropagation();
+        if (b.dataset.q === 'done') { editingLogged = null; renderMeals(); return; }
+        const dir = b.dataset.q === 'add1' ? 0 : Number(b.dataset.q);
+        const next = b.dataset.q === 'add1' ? f.qty + (grams ? (allFoods().find((x) => x.name === f.name) || {}).unitG || 100 : 1)
+          : grams ? Math.max(10, f.qty + 10 * dir) : Math.max(0.25, +stepQty(f.qty, dir).toFixed(2));
+        // קלוריות לפי הערך העדכני של המוצר (ואם הוא לא ברשימה – לפי הקלוריות ליחידה שנרשמו)
+        const t = trayFromLogged(f);
+        t.qty = next;
+        f.kcal = Math.round(itemKcal(t));
+        f.qty = next;
+        save(); renderAll();
+      };
+    });
     list.appendChild(li);
   });
 
@@ -852,7 +884,7 @@ function recalcLogged(oldName, food) {
   let n = 0;
   Object.values(state.days).forEach((days) => Object.values(days).forEach((d) => {
     Object.values(d.meals || {}).forEach((items) => items.forEach((it) => {
-      if (it.name !== oldName) return;
+      if (it.name !== oldName || it.per != null) return; // פריט חד-פעמי באותו שם לא מושפע
       const kcal = Math.round(it.unit === 'גרם' && !isFixed(food) ? food.kcal100 * it.qty / 100 : unitKcal(food) * it.qty);
       if (it.kcal !== kcal || it.name !== food.name) { it.kcal = kcal; it.name = food.name; n++; }
     }));
@@ -926,12 +958,15 @@ function deleteEditingFood() {
 
 // פריט שנרשם (או פריט בארוחה שמורה) → פריט בסל, לפי הערך העדכני של המוצר
 function trayFromLogged(it) {
+  // פריט חד-פעמי/מ-AI זוכר את הקלוריות ליחידה שלו, גם אם יש ברשימה מוצר באותו שם
+  if (it.per != null) return { food: { name: it.name, custom: true, oneOff: true, unit: it.unit, kcalUnit: it.per }, qty: it.qty, mode: 'unit' };
   const food = allFoods().find((f) => f.name === it.name);
   if (food) return { food, qty: it.qty, mode: it.unit === 'גרם' && !isFixed(food) ? 'g' : 'unit' };
   return { food: { name: it.name, custom: true, oneOff: true, unit: it.unit, kcalUnit: it.qty ? it.kcal / it.qty : it.kcal }, qty: it.qty, mode: 'unit' };
 }
 const loggedFromTray = (t, mult = 1) => ({
   name: t.food.name, qty: +(t.qty * mult).toFixed(2), unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t) * mult),
+  ...(t.food.oneOff ? { per: t.food.kcalUnit } : {}),
 });
 
 /* ---------- כמו אתמול + ארוחות שמורות ---------- */

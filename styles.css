@@ -269,6 +269,12 @@ input[type=number]::placeholder { color: var(--muted); opacity: .6; }
 .food-list li .del {
   border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 1.1rem; padding: 2px 6px; border-radius: 8px;
 }
+.food-list li .name { cursor: pointer; }
+.food-list .edit-hint { opacity: .6; font-size: .8em; }
+.food-list li.editing { flex-wrap: wrap; outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+.logged-edit { display: flex; align-items: center; gap: 10px; width: 100%; padding-top: 6px; }
+.logged-edit .stepper b { min-width: 44px; text-align: center; font-size: 1.05rem; }
+.logged-edit .btn { margin-inline-start: auto; padding: 6px 16px; }
 .food-list li .del:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .food-list .empty { justify-content: center; color: var(--muted); background: transparent; border: 1px dashed var(--border); }
 .meal-bars { margin-top: 18px; display: grid; gap: 8px; }
