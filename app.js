@@ -508,6 +508,128 @@ function renderBmi() {
   }).join('');
 }
 
+/* ================= סיכום שבועי, רצפים והישגים ================= */
+const loggedOn = (pid, k) => { const d = day(pid, k); return !!d && Object.values(d.meals || {}).some((x) => x.length); };
+const stepsOk = (pid, k) => { const d = day(pid, k); return !!d && d.steps >= state.profiles[pid].stepGoal; };
+const calOk = (pid, k) => loggedOn(pid, k) && daySummary(pid, k).eaten <= state.profiles[pid].calGoal * 1.05;
+
+// רצף נוכחי: ימים רצופים עד היום (או עד אתמול, אם היום עוד לא הושלם)
+function streak(pid, test) {
+  let k = todayKey();
+  if (!test(pid, k)) k = shiftKey(k, -1);
+  let n = 0;
+  while (test(pid, k)) { n++; k = shiftKey(k, -1); }
+  return n;
+}
+function bestStreak(pid, test) {
+  const keys = Object.keys(state.days[pid] || {}).sort();
+  if (!keys.length) return 0;
+  let best = 0, cur = 0;
+  for (let k = keys[0]; k <= todayKey(); k = shiftKey(k, 1)) {
+    cur = test(pid, k) ? cur + 1 : 0;
+    best = Math.max(best, cur);
+  }
+  return best;
+}
+
+function weekStats(pid, end) {
+  const p = state.profiles[pid];
+  const keys = Array.from({ length: 7 }, (_, i) => shiftKey(end, i - 6));
+  const sums = keys.map((k) => ({ k, ...daySummary(pid, k), logged: loggedOn(pid, k) }));
+  const logged = sums.filter((s) => s.logged);
+  const avg = (arr, f) => (arr.length ? arr.reduce((a, s) => a + f(s), 0) / arr.length : 0);
+  const stepDays = sums.filter((s) => s.steps > 0);
+  const weights = keys.map((k) => day(pid, k) && day(pid, k).weight).filter(Boolean);
+  const over = MEALS.map((m) => ({
+    m, n: logged.filter((s) => s.mealTotals[m.id] > mealGoal(pid, m.id) * 1.15).length,
+  })).sort((a, b) => b.n - a.n)[0];
+  const balance = logged.reduce((a, s) => a + s.balance, 0);
+  return {
+    loggedN: logged.length,
+    avgEaten: avg(logged, (s) => s.eaten),
+    avgSteps: avg(stepDays, (s) => s.steps),
+    calOkN: logged.filter((s) => s.eaten <= p.calGoal * 1.05).length,
+    stepOkN: sums.filter((s) => s.steps >= p.stepGoal).length,
+    expectedKg: balance / 7700,
+    weightChange: weights.length >= 2 ? weights[weights.length - 1] - weights[0] : null,
+    over: over && over.n >= 2 ? over : null,
+  };
+}
+
+const ACHIEVEMENTS = [
+  { id: 'first', icon: '🌱', name: 'יום ראשון', desc: 'רישום ארוחה ראשון', ok: (pid) => bestStreak(pid, loggedOn) >= 1 },
+  { id: 'log7', icon: '📒', name: 'שבוע מלא', desc: '7 ימי רישום ברצף', ok: (pid) => bestStreak(pid, loggedOn) >= 7 },
+  { id: 'log30', icon: '🏅', name: 'חודש של התמדה', desc: '30 ימי רישום ברצף', ok: (pid) => bestStreak(pid, loggedOn) >= 30 },
+  { id: 'steps10k', icon: '👟', name: '10 אלף', desc: 'יום עם 10,000 צעדים', ok: (pid) => Object.values(state.days[pid] || {}).some((d) => d.steps >= 10000) },
+  { id: 'steps15k', icon: '🚀', name: '15 אלף', desc: 'יום עם 15,000 צעדים', ok: (pid) => Object.values(state.days[pid] || {}).some((d) => d.steps >= 15000) },
+  { id: 'stepWeek', icon: '🔥', name: 'שבוע הליכה', desc: '7 ימים ברצף ביעד הצעדים', ok: (pid) => bestStreak(pid, stepsOk) >= 7 },
+  { id: 'calWeek', icon: '🎯', name: 'שבוע מאוזן', desc: '7 ימים ברצף ביעד הקלוריות', ok: (pid) => bestStreak(pid, calOk) >= 7 },
+  { id: 'kg1', icon: '⚖️', name: 'קילו ראשון', desc: 'ירידה של ק"ג מהשקילה הראשונה', ok: (pid) => {
+    const w = Object.keys(state.days[pid] || {}).sort().map((k) => state.days[pid][k].weight).filter(Boolean);
+    return w.length >= 2 && w[0] - Math.min(...w.slice(1)) >= 1;
+  } },
+  { id: 'together', icon: '💑', name: 'ביחד', desc: 'שניכם ביעד הצעדים באותו יום', ok: () => {
+    const [a, b] = Object.keys(state.profiles);
+    return Object.keys(state.days[a] || {}).some((k) => stepsOk(a, k) && stepsOk(b, k));
+  } },
+];
+
+// הישג חדש → הודעה (נזכר לכל מכשיר; בפעם הראשונה רק נשמר, בלי מבול הודעות)
+function announceAchievements(pid, unlocked) {
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem('wellness-achv')) || {}; } catch (e) { /* ignore */ }
+  const ids = unlocked.map((a) => a.id);
+  if (seen[pid]) {
+    const fresh = unlocked.filter((a) => !seen[pid].includes(a.id));
+    if (fresh.length) setTimeout(() => toast(`🏆 הישג חדש ל${state.profiles[pid].name}: ${fresh[0].icon} ${fresh[0].name}`), 600);
+  }
+  seen[pid] = ids;
+  try { localStorage.setItem('wellness-achv', JSON.stringify(seen)); } catch (e) { /* ignore */ }
+}
+
+function renderWeekCard() {
+  const pid = state.active;
+  const p = profile();
+  const w = weekStats(pid, currentDate);
+  const st = { log: streak(pid, loggedOn), steps: streak(pid, stepsOk), cal: streak(pid, calOk) };
+  const unlocked = ACHIEVEMENTS.filter((a) => a.ok(pid));
+  if (unchanged('week', JSON.stringify([pid, currentDate, w, st, unlocked.map((a) => a.id), p.calGoal, p.stepGoal]))) return;
+  announceAchievements(pid, unlocked);
+  const sign = (n, d = 1) => `${n > 0 ? '+' : ''}${n.toFixed(d)}`;
+  const tile = (label, value, sub, cls = '') => `<div class="wk-tile ${cls}"><span>${label}</span><b>${value}</b><small>${sub}</small></div>`;
+  const insights = [];
+  if (!w.loggedN) insights.push('עוד אין רישום ארוחות השבוע.');
+  else {
+    insights.push(w.avgEaten <= p.calGoal * 1.05
+      ? `✅ בממוצע ${fmt(w.avgEaten)} קק"ל ביום – בתוך היעד.`
+      : `⚠️ בממוצע ${fmt(w.avgEaten - p.calGoal)} קק"ל ביום מעל היעד.`);
+    if (w.over) insights.push(`🍽 הארוחה שהכי חורגת: ${w.over.m.icon} ${w.over.m.label} (${w.over.n} ימים מעל היעד שלה).`);
+    if (w.weightChange != null) insights.push(`⚖️ משקל בפועל: ${sign(w.weightChange)} ק"ג · לפי המאזן הקלורי היה צפוי ${sign(w.expectedKg, 2)} ק"ג.`);
+  }
+  if (w.avgSteps && w.avgSteps < p.stepGoal) insights.push(`👟 חסרים בממוצע ${fmt(p.stepGoal - w.avgSteps)} צעדים ביום ליעד.`);
+  const next = ACHIEVEMENTS.filter((a) => !unlocked.includes(a)).slice(0, 3);
+  $('#weekCard').innerHTML = `
+    <div class="card-head"><h2>📈 השבוע של ${escapeHtml(p.name)}</h2><span class="badge">${w.loggedN}/7 ימים רשומים</span></div>
+    <div class="wk-tiles">
+      ${tile('ממוצע אכילה', fmt(w.avgEaten), `יעד ${fmt(p.calGoal)}`, w.loggedN && w.avgEaten > p.calGoal * 1.05 ? 'warn' : '')}
+      ${tile('ממוצע צעדים', fmt(w.avgSteps), `יעד ${fmt(p.stepGoal)}`, w.avgSteps >= p.stepGoal ? 'good' : '')}
+      ${tile('ביעד קלוריות', `${w.calOkN}/7`, 'ימים')}
+      ${tile('ביעד צעדים', `${w.stepOkN}/7`, 'ימים')}
+      ${tile('מאזן שבועי', `${sign(w.expectedKg, 2)}`, 'ק"ג צפוי', w.expectedKg < 0 ? 'good' : '')}
+      ${tile('שינוי במשקל', w.weightChange == null ? '–' : sign(w.weightChange), w.weightChange == null ? 'צריך 2 שקילות' : 'ק"ג בפועל')}
+    </div>
+    <ul class="wk-insights">${insights.map((t) => `<li>${t}</li>`).join('')}</ul>
+    <div class="streaks">
+      <span class="${st.log ? 'on' : ''}">📒 <b>${st.log}</b> ימי רישום ברצף</span>
+      <span class="${st.steps ? 'on' : ''}">👟 <b>${st.steps}</b> ביעד צעדים</span>
+      <span class="${st.cal ? 'on' : ''}">🎯 <b>${st.cal}</b> ביעד קלוריות</span>
+    </div>
+    <div class="achv">
+      ${unlocked.map((a) => `<span class="achv-item on" title="${a.desc}">${a.icon} ${a.name}</span>`).join('')}
+      ${next.map((a) => `<span class="achv-item" title="${a.desc}">🔒 ${a.name}<small>${a.desc}</small></span>`).join('')}
+    </div>`;
+}
+
 function renderCouple() {
   $('#coupleGrid').innerHTML = Object.entries(state.profiles).map(([id, p]) => {
     const s = daySummary(id, currentDate);
@@ -609,6 +731,7 @@ function renderAll() {
   renderSteps();
   renderBmi();
   renderCouple();
+  renderWeekCard();
   renderCharts();
   if (window.wellnessWatch) window.wellnessWatch.render();
 }
