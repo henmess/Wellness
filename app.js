@@ -1190,6 +1190,7 @@ function openSettings() {
     input.addEventListener('input', show);
     show();
   });
+  renderLocalRestore();
   $('#settings').showModal();
   $('.settings-body').scrollTop = 0;
 }
@@ -1355,6 +1356,41 @@ window.wellness = {
   toast,
 };
 
+/* ================= גיבוי יומי בדפדפן (14 ימים) ================= */
+const BACKUP_KEY = 'wellness-backups';
+function backups() {
+  try { return JSON.parse(localStorage.getItem(BACKUP_KEY)) || []; } catch (e) { return []; }
+}
+function dailyBackup() {
+  const list = backups();
+  if (list.length && list[list.length - 1].date === todayKey()) return;
+  list.push({ date: todayKey(), data: { profiles: state.profiles, days: state.days, customFoods: state.customFoods, foodOverrides: state.foodOverrides, savedMeals: state.savedMeals } });
+  while (list.length > 14) list.shift();
+  try { localStorage.setItem(BACKUP_KEY, JSON.stringify(list)); } catch (e) { /* מלא – מוותרים */ }
+}
+function renderLocalRestore() {
+  const el = $('#restorePanel');
+  const connected = window.wellnessSync && window.wellnessSync.connected();
+  const list = backups();
+  el.classList.toggle('hidden', !!connected || !list.length);
+  if (connected || !list.length) return;
+  el.innerHTML = `<h3>🕓 שחזור מגיבוי</h3>
+    <p class="hint">האתר שומר בדפדפן הזה גיבוי אוטומטי בכל יום (14 הימים האחרונים). הגיבוי נשמר בתחילת היום.</p>
+    <div class="restore-row">
+      <select id="localBackup">${list.slice().reverse().map((b) =>
+        `<option value="${b.date}">${parseKey(b.date).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</option>`).join('')}</select>
+      <button type="button" class="btn" id="localRestoreBtn">שחזור</button>
+    </div>`;
+  $('#localRestoreBtn').onclick = () => {
+    const b = backups().find((x) => x.date === $('#localBackup').value);
+    if (!b || !confirm('לשחזר את הנתונים למצב של הגיבוי? שינויים מאז יימחקו.')) return;
+    state = Object.assign(defaultState(), state, b.data);
+    save(); renderAll();
+    $('#settings').close();
+    toast('✓ הנתונים שוחזרו מהגיבוי');
+  };
+}
+
 // בדיקת גרסה חדשה: GitHub Pages שומר את הדף במטמון עד 10 דקות, אז בודקים בעצמנו
 async function checkForUpdate() {
   if (!APP_VERSION || location.protocol === 'file:') return;
@@ -1372,6 +1408,7 @@ bind();
 renderAll();
 $('#appVersion').textContent = APP_VERSION ? `גרסה ${APP_VERSION}` : '';
 checkForUpdate();
+dailyBackup();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 if (goalsJustUpdated) {
   goalsJustUpdated = false;

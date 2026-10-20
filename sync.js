@@ -161,6 +161,74 @@ async function withRetry(path, write) {
   }
 }
 
+/* ---------------- שחזור לתאריך (מההיסטוריה של המאגר) ---------------- */
+let restoreDate = '';
+const atRef = (path, ref) => gh(`/repos/${conf.repo}/contents/${path}?ref=${ref}`);
+
+async function restoreTo(date) {
+  if (!conf || !date) return;
+  const label = new Date(`${date}T12:00:00`).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+  if (!confirm(`לשחזר את כל הנתונים (של שניכם) למצב של סוף ${label}?\nשינויים שנעשו אחרי התאריך יוחלפו. אפשר לבטל: המצב הנוכחי נשאר בהיסטוריה.`)) return;
+  if (busy) { W.toast('סנכרון באמצע – נסו שוב בעוד רגע'); return; }
+  busy = true;
+  setStatus('loading');
+  try {
+    const until = new Date(`${date}T23:59:59`).toISOString();
+    const commits = await gh(`/repos/${conf.repo}/commits?until=${encodeURIComponent(until)}&per_page=1`);
+    if (!commits || !commits.length) { W.toast('אין גיבוי מהתאריך הזה או לפניו'); setStatus('synced'); return; }
+    const ref = commits[0].sha;
+    const metaF = await atRef('meta.json', ref);
+    const meta = metaF ? JSON.parse(fromB64(metaF.content)) : null;
+    const oldFiles = ((await atRef('days', ref)) || []).filter((f) => /\.json$/.test(f.path));
+    const days = {};
+    for (const f of oldFiles) {
+      const month = JSON.parse(fromB64((await atRef(f.path, ref)).content));
+      Object.entries(month).forEach(([pid, dd]) => Object.assign(days[pid] || (days[pid] = {}), dd));
+    }
+    // הגרסאות הנוכחיות בענן, כדי שאפשר יהיה לכתוב מעליהן
+    const nowRoot = (await contents('')) || [];
+    const nowMeta = nowRoot.find((e) => e.path === 'meta.json');
+    if (nowMeta) shas['meta.json'] = nowMeta.sha;
+    const nowFiles = nowRoot.some((e) => e.path === 'days') ? ((await contents('days')) || []) : [];
+    nowFiles.forEach((f) => { shas[f.path] = f.sha; });
+
+    W.applyRemote((s) => {
+      if (meta) {
+        s.profiles = meta.profiles;
+        s.customFoods = meta.customFoods || [];
+        s.foodOverrides = meta.foodOverrides || {};
+        s.savedMeals = meta.savedMeals || [];
+      }
+      Object.keys(s.profiles).forEach((pid) => { if (!days[pid]) days[pid] = {}; });
+      s.days = days;
+    });
+    synced = {};
+    const s = W.getState();
+    const m = metaOf(s);
+    await writeFile('meta.json', m);
+    synced.meta = stable(m);
+    const months = new Set(oldFiles.map((f) => f.path));
+    for (const path of months) {
+      const key = path.slice(5, 12);
+      const content = {};
+      Object.entries(s.days).forEach(([pid, dd]) => Object.entries(dd).forEach(([d, v]) => {
+        if (d.startsWith(key)) { (content[pid] || (content[pid] = {}))[d] = clean(v); synced[dayKey(pid, d)] = stable(clean(v)); }
+      }));
+      await writeFile(path, content);
+    }
+    // חודשים שנוספו אחרי התאריך – מתרוקנים
+    for (const f of nowFiles) if (!months.has(f.path)) await writeFile(f.path, {});
+    lastSync = new Date();
+    setStatus('synced');
+    W.toast(`✓ הנתונים שוחזרו למצב של ${label}`);
+  } catch (e) {
+    fail(e);
+  } finally {
+    busy = false;
+    if (again) { again = false; sync(); }
+  }
+}
+
 async function sync() {
   if (!conf) return;
   if (busy) { again = true; return; }
@@ -310,15 +378,24 @@ function renderPanel() {
         <button type="button" class="btn" data-act="sync">סנכרון עכשיו</button>
         <button type="button" class="btn" data-act="disconnect">ניתוק</button>
       </div>
-      <p class="hint">הקישור מכיל את הגישה למאגר – שלחו אותו רק לבן/בת הזוג.</p>`;
+      <p class="hint">הקישור מכיל את הגישה למאגר – שלחו אותו רק לבן/בת הזוג.</p>
+      <div class="restore-row">
+        <span>🕓 שחזור לתאריך:</span>
+        <input type="date" id="restoreDate" max="${new Date().toISOString().slice(0, 10)}" value="${restoreDate}">
+        <button type="button" class="btn" data-act="restore">שחזור</button>
+      </div>
+      <p class="hint">כל שינוי נשמר בהיסטוריה של המאגר, אז אפשר לחזור למצב של כל יום (גם אחרי שחזור).</p>`;
   }
   el.innerHTML = `<h3>☁ שמירה משותפת</h3>${body}`;
   el.querySelectorAll('[data-act]').forEach((b) => {
     b.onclick = () => ({
       connect: () => connect($('#syncRepo').value, $('#syncToken').value),
       share: shareLink, copy: copyLink, sync, disconnect,
+      restore: () => restoreTo($('#restoreDate').value),
     })[b.dataset.act]();
   });
+  const rd = $('#restoreDate');
+  if (rd) rd.onchange = () => { restoreDate = rd.value; };
   el.querySelectorAll('input').forEach((inp) => {
     inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); connect($('#syncRepo').value, $('#syncToken').value); } };
   });
@@ -330,7 +407,7 @@ $('#syncBannerClose').onclick = () => {
   renderBanner();
 };
 
-window.wellnessSync = { push };
+window.wellnessSync = { push, connected: () => !!conf };
 renderPill();
 renderPanel();
 if (!readConnectLink() && conf) sync();

@@ -483,6 +483,9 @@ dialog[open] { animation: rise .3s ease; }
   animation: rise .35s ease both;
 }
 
+.restore-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .88rem; margin-top: 8px; }
+.restore-row input, .restore-row select { background: var(--surface); flex: 1; min-width: 140px; }
+
 /* ---------- Toast & footer ---------- */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 120px); z-index: 50;
