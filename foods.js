@@ -173,6 +173,7 @@ const FOODS = [
   // שתייה
   { cat: 'drinks', name: 'קפה הפוך', kcal100: 50, unit: 'כוס', unitG: 240 },
   { cat: 'drinks', name: 'קפה שחור / תה', kcal100: 1, unit: 'כוס', unitG: 240 },
+  { cat: 'drinks', name: 'מים', kcal100: 0, unit: 'כוס', unitG: 240 },
   { cat: 'drinks', name: 'מיץ תפוזים', kcal100: 45, unit: 'כוס', unitG: 240 },
   { cat: 'drinks', name: 'קולה', kcal100: 42, unit: 'פחית', unitG: 330 },
   { cat: 'drinks', name: 'בירה', kcal100: 43, unit: 'בקבוק', unitG: 330 },

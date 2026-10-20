@@ -888,7 +888,8 @@ function saveFoodEdit() {
     if (name !== f.name && allFoods().some((x) => x !== f && x.name === name)) { toast('כבר יש מוצר בשם הזה'); return; }
     const oldName = f.name;
     f.name = name;
-    f.kcalUnit = kcal;
+    if (isFixed(f)) f.kcalUnit = kcal;
+    else f.kcal100 = +(kcal * 100 / f.unitG).toFixed(2);
     changed = recalcLogged(oldName, f);
   } else {
     const base = FOODS.find((x) => x.name === editing.name);

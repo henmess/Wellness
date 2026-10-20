@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261020g">
+  <link rel="stylesheet" href="styles.css?v=20261020j">
 </head>
 <body>
   <header class="topbar">
@@ -91,6 +91,11 @@
         <div class="tabs" id="mealTabs"></div>
 
         <div class="saved-meals hidden" id="savedMeals"></div>
+        <div class="smart-add">
+          <input id="freeText" placeholder="✍️ כתבו מה אכלתם: 2 פרוסות לחם מלא, קוטג' וקפה הפוך" aria-label="מה אכלתם, בטקסט חופשי">
+          <button type="button" class="btn primary" id="freeTextGo">זיהוי</button>
+          <button type="button" class="icon-btn" id="scanBtn" title="סריקת ברקוד">📷</button>
+        </div>
         <div class="picker">
           <input id="pickerSearch" type="search" placeholder="🔍 חיפוש מוצר: פיתה, קוטג', בננה…" aria-label="חיפוש מוצר">
           <div class="cat-chips" id="catChips"></div>
@@ -258,6 +263,34 @@
     </form>
   </dialog>
 
+  <!-- סריקת ברקוד -->
+  <dialog id="scanDialog">
+    <form method="dialog" class="scan-form" id="scanForm">
+      <h2>📷 סריקת ברקוד</h2>
+      <div id="scanCamera">
+        <video id="scanVideo" playsinline muted></video>
+        <p class="hint" id="scanStatus">מכוונים את המצלמה לברקוד…</p>
+      </div>
+      <div class="scan-manual">
+        <input id="scanCode" type="text" inputmode="numeric" placeholder="או הקלידו את מספר הברקוד" dir="ltr">
+        <button type="button" class="btn" id="scanLookup">חיפוש</button>
+      </div>
+      <div class="scan-result hidden" id="scanResult">
+        <div class="field"><label for="scanName">שם המוצר</label><input id="scanName"></div>
+        <div class="two">
+          <div class="field"><label for="scanKcal">קק"ל ל-100 גרם</label><input id="scanKcal" type="number" min="0" data-keep></div>
+          <div class="field"><label for="scanServing">גרם במנה</label><input id="scanServing" type="number" min="1" data-keep></div>
+        </div>
+        <p class="hint" id="scanSource"></p>
+        <div class="custom-actions">
+          <button type="button" class="btn primary" id="scanSave">⭐ שמירה ב"שלי" ובחירה</button>
+          <button type="button" class="btn" id="scanOnce">📝 רק להיום</button>
+        </div>
+      </div>
+      <div class="food-edit-actions"><span class="grow"></span><button class="btn" value="cancel" formnovalidate>סגירה</button></div>
+    </form>
+  </dialog>
+
   <!-- עריכת מוצר שלי -->
   <dialog id="foodEdit">
     <form method="dialog" class="food-edit-form" id="foodEditForm">
@@ -279,9 +312,10 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261020g"></script>
-  <script src="app.js?v=20261020g"></script>
-  <script src="watch.js?v=20261020g"></script>
-  <script type="module" src="sync.js?v=20261020g"></script>
+  <script src="foods.js?v=20261020j"></script>
+  <script src="app.js?v=20261020j"></script>
+  <script src="smartadd.js?v=20261020j"></script>
+  <script src="watch.js?v=20261020j"></script>
+  <script type="module" src="sync.js?v=20261020j"></script>
 </body>
 </html>
