@@ -356,6 +356,8 @@ input[type=number]::placeholder { color: var(--muted); opacity: .6; }
 .photo-pick { cursor: pointer; }
 .scan-manual input { flex: 1; min-width: 0; }
 .scan-result { display: grid; gap: 10px; }
+.scan-missing { display: grid; gap: 10px; }
+.scan-missing p { margin: 0; }
 .scan-result .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .scan-result input { width: 100%; }
 

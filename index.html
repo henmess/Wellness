@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261020v">
+  <link rel="stylesheet" href="styles.css?v=20261020x">
 </head>
 <body>
   <header class="topbar">
@@ -297,6 +297,13 @@
         <input id="scanCode" type="text" inputmode="numeric" placeholder="או הקלידו את מספר הברקוד" dir="ltr">
         <button type="button" class="btn" id="scanLookup">חיפוש</button>
       </div>
+      <div class="scan-missing hidden" id="scanMissing">
+        <p id="scanMissingText"></p>
+        <label class="btn primary wide photo-pick">📸 צילום התווית התזונתית
+          <input type="file" id="labelPhoto" accept="image/*" capture="environment" hidden></label>
+        <button type="button" class="btn wide" id="scanManual">✍️ הזנה ידנית מהתווית</button>
+        <p class="hint">צלמו את טבלת הערכים התזונתיים – Claude (או אפליקציית ה-AI שלכם) יקרא ממנה את הקלוריות ל-100 גרם.</p>
+      </div>
       <div class="scan-result hidden" id="scanResult">
         <div class="field"><label for="scanName">שם המוצר</label><input id="scanName"></div>
         <div class="two">
@@ -360,11 +367,11 @@
   <div class="toast" id="toast"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="foods.js?v=20261020v"></script>
-  <script src="app.js?v=20261020v"></script>
-  <script src="claude.js?v=20261020v"></script>
-  <script src="smartadd.js?v=20261020v"></script>
-  <script src="watch.js?v=20261020v"></script>
-  <script type="module" src="sync.js?v=20261020v"></script>
+  <script src="foods.js?v=20261020x"></script>
+  <script src="app.js?v=20261020x"></script>
+  <script src="claude.js?v=20261020x"></script>
+  <script src="smartadd.js?v=20261020x"></script>
+  <script src="watch.js?v=20261020x"></script>
+  <script type="module" src="sync.js?v=20261020x"></script>
 </body>
 </html>

@@ -55,6 +55,28 @@ Return one item per component (e.g. schnitzel, mashed potatoes, salad), include 
 If the user adds a note (for example that they ate only half), apply it to the quantities. Names, portions and notes are in Hebrew.
 If the photo shows no food, return an empty items list.`;
 
+  const LABEL_SCHEMA = {
+    type: 'object',
+    properties: {
+      found: { type: 'boolean', description: 'האם רואים בתמונה טבלת ערכים תזונתיים' },
+      name: { type: 'string', description: 'שם המוצר בעברית כפי שמופיע על האריזה, אם רואים' },
+      kcal_per_100g: { type: 'number', description: 'אנרגיה (קלוריות) ל-100 גרם/מ"ל מהטבלה' },
+      serving_g: { type: 'number', description: 'גודל מנה בגרם אם מופיע, אחרת 100' },
+    },
+    required: ['found', 'name', 'kcal_per_100g', 'serving_g'],
+    additionalProperties: false,
+  };
+  const LABEL_SYSTEM = `You read Israeli nutrition labels ("סימון תזונתי" / "ערכים תזונתיים").
+Report the energy per 100 g (or 100 ml) exactly as printed - if only kJ is printed, convert to kcal (divide by 4.184).
+Report the serving size in grams when the label states one. Do not estimate: if no nutrition table is visible, set found to false.`;
+
+  async function readLabel(base64, name) {
+    return ask(LABEL_SYSTEM, LABEL_SCHEMA, [
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+      { type: 'text', text: name ? `המוצר: ${name}` : 'מה הקלוריות ל-100 גרם?' },
+    ]);
+  }
+
   // phrases: מה שלא זוהה; context: כל הטקסט, כדי להבין כמויות והקשר
   async function estimate(phrases, context) {
     return ask(SYSTEM, SCHEMA, `הטקסט המלא: "${context}"\nלא נמצאו ברשימה: ${phrases.map((p) => `"${p}"`).join(', ')}`).then((r) => r.items || []);
@@ -122,6 +144,6 @@ If the photo shows no food, return an empty items list.`;
     if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save.click(); } };
   }
 
-  window.wellnessClaude = { enabled: () => !!getKey(), estimate, estimatePhoto, renderPanel };
+  window.wellnessClaude = { enabled: () => !!getKey(), estimate, estimatePhoto, readLabel, renderPanel };
   renderPanel();
 })();

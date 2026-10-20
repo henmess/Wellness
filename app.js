@@ -966,7 +966,8 @@ function trayFromLogged(it) {
 }
 const loggedFromTray = (t, mult = 1) => ({
   name: t.food.name, qty: +(t.qty * mult).toFixed(2), unit: t.mode === 'g' ? 'גרם' : t.food.unit, kcal: Math.round(itemKcal(t) * mult),
-  ...(t.food.oneOff ? { per: t.food.kcalUnit } : {}),
+  // חד-פעמי: הקלוריות ליחידה שנרשמה (מנה או גרם), כדי שלא יתבלבל עם מוצר באותו שם
+  ...(t.food.oneOff ? { per: +(t.qty ? itemKcal(t) / t.qty : unitKcal(t.food)).toFixed(3) } : {}),
 });
 
 /* ---------- כמו אתמול + ארוחות שמורות ---------- */
@@ -1117,7 +1118,9 @@ function renderTray() {
     if (star) star.onclick = () => {
       const f = t.food;
       if (allFoods().some((x) => x.name === f.name && !x.oneOff)) { toast('כבר יש מוצר בשם הזה'); return; }
-      const saved = { name: f.name, custom: true, unit: f.unit, kcalUnit: f.kcalUnit };
+      const saved = isFixed(f)
+        ? { name: f.name, custom: true, unit: f.unit, kcalUnit: f.kcalUnit }
+        : { name: f.name, custom: true, unit: f.unit, unitG: f.unitG, kcal100: f.kcal100, ...(f.barcode ? { barcode: f.barcode } : {}) };
       state.customFoods.unshift(saved);
       t.food = saved;
       save(); renderCatChips(); afterTrayChange();

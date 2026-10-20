@@ -165,6 +165,12 @@
   const FORMAT = '{"title":"שם קצר לארוחה","items":[{"name":"שניצל","portion":"יחידה","qty":1,"kcal_per_portion":330,"note":"כ-130 גרם"}]}';
 
   function aiPrompt(job) {
+    if (job.label) {
+      return `בתמונה תווית ערכים תזונתיים של מוצר${job.name ? ` (${job.name})` : ''}.
+קרא ממנה את האנרגיה (קלוריות) ל-100 גרם/מ"ל ואת גודל המנה בגרם, אם מופיע. אל תעריך – רק מה שכתוב.
+ענה רק בבלוק JSON בפורמט הזה, בלי הסבר:
+{"name":"שם המוצר","kcal_per_100g":535,"serving_g":25}`;
+    }
     const what = job.photo
       ? `בתמונה המצורפת הארוחה שלי.${job.note ? ` הערה: ${job.note}.` : ''}`
       : `אכלתי: ${job.phrases.join(', ')} (מתוך המשפט: "${job.text}").`;
@@ -186,7 +192,7 @@ ${FORMAT}`;
   function openAiDialog(job) {
     if (job.photo) job.file = dataUrlToFile(job.photo, 'meal.jpg');
     aiJob = job;
-    $('#aiWhat').textContent = job.photo ? 'הערכה של הארוחה מהתמונה' : `הערכה של: ${job.phrases.join(', ')}`;
+    $('#aiWhat').textContent = job.label ? 'קריאת הקלוריות מהתווית' : job.photo ? 'הערכה של הארוחה מהתמונה' : `הערכה של: ${job.phrases.join(', ')}`;
     $('#aiAnswer').value = '';
     $('#aiShare').textContent = job.photo ? '📤 שליחת התמונה והבקשה' : '📤 שליחה';
     $('#aiDialog').showModal();
@@ -250,7 +256,25 @@ ${FORMAT}`;
     toast(`🤖 ${title ? `${title} · ` : ''}${items.length} פריטים · כ-${fmt(total)} קק"ל – ⭐ / 💾 לשמירה`);
   }
 
+  // תשובה לתווית: JSON עם kcal_per_100g, או "535 קק"ל ל-100 גרם"
+  function parseLabelAnswer(raw) {
+    const t = raw.replace(/[“”]/g, '"');
+    const s = t.indexOf('{'); const e = t.lastIndexOf('}');
+    if (s >= 0 && e > s) {
+      try { const o = JSON.parse(t.slice(s, e + 1)); if (Number(o.kcal_per_100g) >= 0) return o; } catch (err) { /* שורות */ }
+    }
+    const m = t.match(/(\d{1,4}(?:\.\d)?)\s*(?:קק"ל|קלוריות|kcal)/i);
+    return m ? { name: '', kcal_per_100g: Number(m[1]), serving_g: 100 } : null;
+  }
+
   function addFromAnswer() {
+    if (aiJob.label) {
+      const r = parseLabelAnswer($('#aiAnswer').value);
+      if (!r) { toast('לא מצאתי בתשובה קלוריות ל-100 גרם'); return; }
+      $('#aiDialog').close();
+      showScanForm({ name: r.name || aiJob.name || '', kcal100: r.kcal_per_100g, serving: r.serving_g || 100, source: 'נקרא מהתווית – בדקו לפני שמירה' });
+      return;
+    }
     const { title, items } = parseAiAnswer($('#aiAnswer').value);
     if (!items.length) { toast('לא מצאתי בתשובה מאכלים וקלוריות – הדביקו את כל התשובה'); return; }
     $('#aiDialog').close();
@@ -290,6 +314,7 @@ ${FORMAT}`;
   async function openScanner() {
     scanned = null;
     $('#scanResult').classList.add('hidden');
+    $('#scanMissing').classList.add('hidden');
     $('#scanCode').value = '';
     $('#scanDialog').showModal();
     setScanMode('barcode');
@@ -322,36 +347,97 @@ ${FORMAT}`;
     }
   }
 
+  const hasHebrew = (s) => /[\u0590-\u05FF]/.test(s || '');
+  // השם: עדיף בעברית, ועם המותג אם הוא לא כבר בשם ("במבה אסם")
+  function productName(pr) {
+    const names = [pr.product_name_he, pr.product_name, pr.product_name_en, pr.generic_name_he, pr.generic_name].map((x) => (x || '').trim()).filter(Boolean);
+    let name = names.find(hasHebrew) || names[0] || '';
+    const brand = (pr.brands || '').split(',')[0].trim();
+    if (brand && !name.includes(brand)) name = name ? `${name} ${brand}` : brand;
+    return name;
+  }
+
   async function lookup(code) {
     code = String(code).replace(/\D/g, '');
     if (code.length < 6) { toast('מספר ברקוד לא תקין'); return; }
     $('#scanCode').value = code;
     $('#scanStatus').textContent = 'מחפש את המוצר…';
+    scanned = { code };
+    // מוצר שכבר שמרתי עם הברקוד הזה – מיד, בלי לחפש במאגר
+    const mine = state.customFoods.find((f) => f.barcode === code);
+    if (mine) { addScanned(mine); return; }
+    let pr = null;
     try {
-      const url = `https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_he,generic_name,brands,nutriments,serving_quantity`;
+      const url = `https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_he,product_name_en,generic_name,generic_name_he,brands,nutriments,serving_quantity`;
       const data = await (await fetch(url)).json();
-      const pr = data && data.status === 1 ? data.product : null;
-      const n = (pr && pr.nutriments) || {};
-      const kcal = n['energy-kcal_100g'] != null ? n['energy-kcal_100g'] : n.energy_100g != null ? n.energy_100g / 4.184 : null;
-      const name = pr && (pr.product_name_he || pr.product_name || pr.generic_name || pr.brands);
-      if (!pr) {
-        toast('המוצר לא נמצא במאגר – אפשר להוסיף אותו ידנית');
-        $('#scanDialog').close();
-        openCustomAdd('');
-        return;
-      }
-      scanned = { code };
-      $('#scanName').value = (name || '').trim();
-      $('#scanKcal').value = kcal != null ? Math.round(kcal) : '';
-      $('#scanServing').value = Math.round(pr.serving_quantity) || 100;
-      $('#scanSource').textContent = kcal != null
-        ? `ברקוד ${code} · נתונים מ-Open Food Facts (כדאי לוודא מול התווית)`
-        : `ברקוד ${code} · אין במאגר ערך קלורי – הזינו מהתווית`;
-      $('#scanResult').classList.remove('hidden');
-      $('#scanCamera').classList.add('hidden');
+      pr = data && data.product ? data.product : null;
     } catch (e) {
-      toast('אין חיבור למאגר המוצרים כרגע');
+      toast('אין חיבור למאגר המוצרים כרגע – אפשר לצלם את התווית');
     }
+    const n = (pr && pr.nutriments) || {};
+    const kcal = n['energy-kcal_100g'] != null ? n['energy-kcal_100g']
+      : n['energy-kj_100g'] != null ? n['energy-kj_100g'] / 4.184
+      : n.energy_100g != null ? n.energy_100g / 4.184 : null;
+    const name = pr ? productName(pr) : '';
+    if (pr && kcal != null && name) {
+      addScanned({ name, custom: true, oneOff: true, scanned: true, barcode: code, unit: 'מנה', unitG: Math.round(pr.serving_quantity) || 100, kcal100: Math.round(kcal) });
+      return;
+    }
+    // לא נמצא / בלי קלוריות: צילום התווית או הזנה ידנית
+    stopCamera();
+    scanned = { code, name };
+    $('#scanCamera').classList.add('hidden');
+    $('#scanMissingText').textContent = pr
+      ? `מצאתי את "${name || 'המוצר'}", אבל אין במאגר ערך קלורי.`
+      : 'המוצר לא נמצא במאגר המוצרים (חסרים בו לא מעט מוצרים ישראליים).';
+    $('#scanMissing').classList.remove('hidden');
+  }
+
+  // מוצר מהברקוד → ישר לסל (מנה או גרמים); ⭐ בסל שומר אותו ב"שלי" יחד עם הברקוד
+  function addScanned(food) {
+    tray.push({ food, qty: 1, mode: 'unit' });
+    $('#scanDialog').close();
+    afterTrayChange();
+    $('#tray').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(`📷 נוסף: ${food.name} · ${fmt(unitKcal(food))} קק"ל ל${food.unit}${food.unitG && !isFixed(food) ? ` (${food.unitG} גר')` : ''}${food.oneOff ? ' – ⭐ לשמירה' : ''}`);
+  }
+
+  // טופס אישור: שם, קלוריות ל-100 גרם וגודל מנה (מתווית או הזנה ידנית)
+  function showScanForm({ name = '', kcal100 = '', serving = 100, source = '' } = {}) {
+    if (!$('#scanDialog').open) $('#scanDialog').showModal();
+    setScanMode('barcode');
+    stopCamera();
+    $('#scanCamera').classList.add('hidden');
+    $('#scanMissing').classList.add('hidden');
+    $('#scanName').value = name;
+    $('#scanKcal').value = kcal100 === '' ? '' : Math.round(kcal100);
+    $('#scanServing').value = Math.round(serving) || 100;
+    $('#scanSource').textContent = source || (scanned ? `ברקוד ${scanned.code} · בדקו מול התווית` : '');
+    $('#scanResult').classList.remove('hidden');
+  }
+
+  async function onLabelPhoto(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    let dataUrl;
+    try { dataUrl = await shrinkImage(file); } catch (err) { toast('לא הצלחתי לפתוח את התמונה'); return; }
+    const name = scanned && scanned.name;
+    if (window.wellnessClaude && window.wellnessClaude.enabled()) {
+      $('#scanMissingText').textContent = '🤖 קורא את התווית…';
+      try {
+        const r = await window.wellnessClaude.readLabel(dataUrl.split(',')[1], name);
+        if (!r.found || !(r.kcal_per_100g >= 0)) { $('#scanMissingText').textContent = 'לא רואים בתמונה טבלת ערכים תזונתיים – נסו שוב מקרוב'; return; }
+        showScanForm({ name: r.name || name || '', kcal100: r.kcal_per_100g, serving: r.serving_g, source: `נקרא מהתווית${scanned ? ` · ברקוד ${scanned.code}` : ''} – בדקו לפני שמירה` });
+      } catch (err) {
+        $('#scanMissingText').textContent = `🤖 ${err.friendly || 'שגיאה בקריאת התווית'}`;
+      }
+      return;
+    }
+    // בלי מפתח: דרך אפליקציית ה-AI (חינם)
+    $('#scanDialog').close();
+    openAiDialog({ label: dataUrl, photo: dataUrl, name });
+    shareJob();
   }
 
   /* ---------------- צילום ארוחה ---------------- */
@@ -435,6 +521,8 @@ ${FORMAT}`;
     $('#scanDialog').addEventListener('close', stopCamera);
     document.querySelectorAll('.scan-tabs .tab').forEach((t) => { t.onclick = () => setScanMode(t.dataset.mode); });
     $('#mealPhoto').addEventListener('change', onPhoto);
+    $('#labelPhoto').addEventListener('change', onLabelPhoto);
+    $('#scanManual').onclick = () => showScanForm({ name: (scanned && scanned.name) || '' });
     $('#mealEstimate').onclick = estimateMeal;
     $('#mealShare').onclick = () => {
       if (!photoUrl) return;
@@ -472,6 +560,6 @@ ${FORMAT}`;
     };
   }
 
-  window.wellnessSmart = { parseFreeText, parseAiAnswer, lookup, photoTitle: () => (tray.some((t) => t.food.ai) ? lastPhotoTitle : '') };
+  window.wellnessSmart = { parseFreeText, parseAiAnswer, parseLabelAnswer, lookup, photoTitle: () => (tray.some((t) => t.food.ai) ? lastPhotoTitle : '') };
   bind();
 })();
