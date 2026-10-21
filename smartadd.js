@@ -195,6 +195,7 @@ ${FORMAT}`;
     $('#aiWhat').textContent = job.label ? 'קריאת הקלוריות מהתווית' : job.photo ? 'הערכה של הארוחה מהתמונה' : `הערכה של: ${job.phrases.join(', ')}`;
     $('#aiAnswer').value = '';
     aiError('');
+    $('#aiCopied').classList.add('hidden');
     $('#aiShare').textContent = job.photo ? '📤 שליחת התמונה והבקשה' : '📤 שליחה';
     $('#aiDialog').showModal();
   }
@@ -204,6 +205,11 @@ ${FORMAT}`;
     try {
       if (aiJob.file) {
         if (navigator.canShare && navigator.canShare({ files: [aiJob.file] })) {
+          // Gemini ועוד אפליקציות מקבלות מהשיתוף רק את התמונה ומתעלמות מהטקסט –
+          // לכן הבקשה מועתקת מראש, ונשאר רק להדביק אותה שם
+          let copied = false;
+          try { await navigator.clipboard.writeText(text); copied = true; } catch (e) {}
+          $('#aiCopied').classList.toggle('hidden', !copied);
           await navigator.share({ files: [aiJob.file], text });
           return;
         }
