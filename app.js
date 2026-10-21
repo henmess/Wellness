@@ -434,7 +434,7 @@ function renderMeals() {
     const editing = editingLogged === editKey(i);
     li.className = editing ? 'editing' : '';
     li.innerHTML = `<span class="name">${escapeHtml(f.name)}<small><bdi dir="ltr">${grams ? f.qty : fmtQty(f.qty)}</bdi> ${escapeHtml(f.unit)}${editing ? '' : ' <span class="edit-hint" title="לחצו לשינוי כמות">✎</span>'}</small></span>
-      <span class="kcal">${fmt(f.kcal)} קק"ל</span><button class="del" title="מחיקה">✕</button>
+      <span class="kcal">${canStar(f) ? '<button type="button" class="t-star" title="שמירה ב&quot;שלי&quot;">⭐</button>' : ''}${fmt(f.kcal)} קק"ל</span><button class="del" title="מחיקה">✕</button>
       ${editing ? `<div class="logged-edit">
         <span class="stepper"><button type="button" data-q="-1" aria-label="פחות">−</button>
           <b dir="ltr">${grams ? `${f.qty}g` : fmtQty(f.qty)}</b>
@@ -448,6 +448,8 @@ function renderMeals() {
       editingLogged = null;
       save(); renderAll();
     };
+    const star = li.querySelector('.t-star');
+    if (star) star.onclick = (e) => { e.stopPropagation(); starLogged(f); };
     // לחיצה על הפריט פותחת/סוגרת את שינוי הכמות
     li.querySelector('.name').onclick = () => { editingLogged = editing ? null : editKey(i); renderMeals(); };
     li.querySelectorAll('[data-q]').forEach((b) => {
@@ -1142,6 +1144,21 @@ function renderTray() {
     li.querySelector('.del').onclick = () => { tray.splice(i, 1); afterTrayChange(); };
     ul.appendChild(li);
   });
+}
+// פריט חד-פעמי שכבר נרשם (למשל הערכת AI) – אפשר לשמור אותו ב"שלי" גם אחרי ההוספה
+function canStar(f) {
+  return f.per != null && !allFoods().some((x) => x.name === f.name && !x.oneOff);
+}
+function starLogged(f) {
+  const saved = f.unit === 'גרם'
+    ? { name: f.name, custom: true, unit: 'מנה', unitG: 100, kcal100: Math.round(f.per * 100) }
+    : { name: f.name, custom: true, unit: f.unit, kcalUnit: Math.round(f.per) };
+  state.customFoods.unshift(saved);
+  // אותו מאכל שנרשם בימים/ארוחות אחרים מתחבר עכשיו למוצר השמור
+  Object.values(state.days || {}).forEach((byPid) => Object.values(byPid || {}).forEach((d) =>
+    Object.values((d && d.meals) || {}).forEach((items) => items.forEach((x) => { if (x.name === f.name && x.per != null) delete x.per; }))));
+  save(); renderCatChips(); renderAll();
+  toast(`"${f.name}" נשמר ב"שלי" ⭐`);
 }
 function afterTrayChange() { renderTray(); renderProducts(); }
 

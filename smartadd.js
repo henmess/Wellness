@@ -189,8 +189,66 @@ ${FORMAT}`;
     return new File([bytes], name, { type: head.match(/:(.*?);/)[1] });
   }
 
+  // הבקשה המקוצרת מודפסת על התמונה עצמה: Gemini ואחרות מקבלות מהשיתוף רק את התמונה ומתעלמות מהטקסט
+  function imageCaption(job) {
+    if (job.label) return 'יומן תזונה: קרא מהתווית את הקלוריות ל-100 גרם ואת גודל המנה בגרם. ענה רק ב-JSON:';
+    return `יומן תזונה: הערך את הקלוריות בארוחה שבתמונה.${job.note ? ` הערה: ${job.note}.` : ''} פרק כל מרכיב (כולל שמן ורטבים), גודל מנה ישראלי טיפוסי. ענה רק ב-JSON:`;
+  }
+  function captionedFile(job) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.width;
+        const pad = Math.round(w * 0.03), fs = Math.max(18, Math.round(w * 0.032));
+        const c = document.createElement('canvas');
+        const ctx = c.getContext('2d');
+        ctx.font = `${fs}px sans-serif`;
+        // שבירת שורות לפי רוחב
+        const lines = [];
+        let line = '';
+        imageCaption(job).split(' ').forEach((word) => {
+          const next = line ? `${line} ${word}` : word;
+          if (ctx.measureText(next).width > w - pad * 2 && line) { lines.push(line); line = word; } else line = next;
+        });
+        if (line) lines.push(line);
+        const json = job.label ? '{"name":"","kcal_per_100g":0,"serving_g":0}' : '{"items":[{"name":"","portion":"","qty":1,"kcal_per_portion":0}]}';
+        ctx.font = `${fs}px monospace`;
+        const jfs = Math.min(fs, Math.floor(fs * (w - pad * 2) / (ctx.measureText(json).width || 1)));
+        const lh = Math.round(fs * 1.35);
+        const strip = pad * 2 + lines.length * lh + Math.round(jfs * 1.5);
+        c.width = w; c.height = img.height + strip;
+        ctx.drawImage(img, 0, 0);
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, img.height, w, strip);
+        ctx.fillStyle = '#111'; ctx.textBaseline = 'top';
+        ctx.font = `${fs}px sans-serif`; ctx.direction = 'rtl'; ctx.textAlign = 'right';
+        lines.forEach((l, i) => ctx.fillText(l, w - pad, img.height + pad + i * lh));
+        ctx.font = `${jfs}px monospace`; ctx.direction = 'ltr'; ctx.textAlign = 'left';
+        ctx.fillText(json, pad, img.height + pad + lines.length * lh);
+        resolve(dataUrlToFile(c.toDataURL('image/jpeg', 0.85), job.label ? 'label.jpg' : 'meal.jpg'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = job.photo;
+    });
+  }
+
+  // העתקה סינכרונית בתוך הלחיצה – עובדת גם כשהעתקה אסינכרונית נחסמת בטלפון
+  function copySync(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;opacity:0;';
+    ($('#aiDialog').open ? $('#aiDialog') : document.body).appendChild(ta); // מחוץ לחלון פתוח האלמנט "מת"
+    ta.select(); ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    return ok;
+  }
+
   function openAiDialog(job) {
-    if (job.photo) job.file = dataUrlToFile(job.photo, 'meal.jpg');
+    if (job.photo) {
+      job.file = dataUrlToFile(job.photo, 'meal.jpg');
+      job.captioned = captionedFile(job).then((f) => { if (f) job.file = f; return f; });
+    }
     aiJob = job;
     $('#aiWhat').textContent = job.label ? 'קריאת הקלוריות מהתווית' : job.photo ? 'הערכה של הארוחה מהתמונה' : `הערכה של: ${job.phrases.join(', ')}`;
     $('#aiAnswer').value = '';
@@ -207,9 +265,10 @@ ${FORMAT}`;
         if (navigator.canShare && navigator.canShare({ files: [aiJob.file] })) {
           // Gemini ועוד אפליקציות מקבלות מהשיתוף רק את התמונה ומתעלמות מהטקסט –
           // לכן הבקשה מועתקת מראש, ונשאר רק להדביק אותה שם
-          let copied = false;
-          try { await navigator.clipboard.writeText(text); copied = true; } catch (e) {}
-          $('#aiCopied').classList.toggle('hidden', !copied);
+          let copied = copySync(text);
+          if (!copied) { try { await navigator.clipboard.writeText(text); copied = true; } catch (e) {} }
+          $('#aiCopied').classList.remove('hidden'); // הבקשה תמיד על התמונה, וגם בלוח אם ההעתקה הצליחה
+          await aiJob.captioned;
           await navigator.share({ files: [aiJob.file], text });
           return;
         }
